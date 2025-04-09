@@ -4,7 +4,7 @@ import { prisma } from "./config/db.js";
 
 dotenv.config({ path: ".env" });
 
-const PORT = process.env.PORT || 4002;
+const PORT = process.env.PORT || 4004;
 
 prisma
   .$connect()
