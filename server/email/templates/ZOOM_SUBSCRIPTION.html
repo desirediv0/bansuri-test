@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Zoom Class Subscription Confirmation</title>
+    <style>
+      body {
+        font-family: 'Arial', sans-serif;
+        line-height: 1.6;
+        color: #333;
+        margin: 0;
+        padding: 0;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+        border: 1px solid #e0e0e0;
+        border-radius: 5px;
+      }
+      .header {
+        text-align: center;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #f0f0f0;
+      }
+      .logo {
+        max-width: 150px;
+        margin-bottom: 20px;
+      }
+      .content {
+        padding: 20px 0;
+      }
+      .meeting-details, .payment-details {
+        background-color: #f9f9f9;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 20px 0;
+      }
+      .meeting-item, .payment-item {
+        margin-bottom: 10px;
+      }
+      .highlight {
+        color: #d23737;
+        font-weight: bold;
+      }
+      .footer {
+        text-align: center;
+        padding-top: 20px;
+        border-top: 2px solid #f0f0f0;
+        font-size: 12px;
+        color: #888;
+      }
+      .btn {
+        display: inline-block;
+        background-color: #d23737;
+        color: white;
+        text-decoration: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <img src="https://bansurividyamandir.com/logo-black.png" alt="Bansuri Vidya Mandir" class="logo" />
+        <h1>Zoom Class Subscription Confirmed!</h1>
+      </div>
+      <div class="content">
+        <p>Hello <span class="highlight">{{name}}</span>,</p>
+        <p>
+          Thank you for subscribing to our Zoom class. Your payment has been successfully processed and your subscription is now active.
+        </p>
+        
+        <div class="payment-details">
+          <h2>Payment Details:</h2>
+          <div class="payment-item"><strong>Amount Paid:</strong> ₹{{amount}}</div>
+          <div class="payment-item"><strong>Receipt Number:</strong> {{receiptNumber}}</div>
+          <div class="payment-item"><strong>Payment ID:</strong> {{paymentId}}</div>
+          <div class="payment-item"><strong>Date:</strong> {{date}}</div>
+        </div>
+        
+        <div class="meeting-details">
+          <h2>Class Details:</h2>
+          <div class="meeting-item"><strong>Class:</strong> {{title}}</div>
+          <div class="meeting-item"><strong>Start Time:</strong> {{startDate}}</div>
+          <div class="meeting-item"><strong>Meeting Link:</strong> <a href="{{meetingLink}}">Click here to join</a></div>
+          <div class="meeting-item"><strong>Password:</strong> {{password}}</div>
+        </div>
+        
+        <p>
+          Your subscription will automatically renew monthly. If you wish to cancel your subscription, you can do so from your account dashboard.
+        </p>
+        
+        <p>
+          <a href="https://bansurividyamandir.com/user-profile" class="btn">Manage Your Subscriptions</a>
+        </p>
+      </div>
+      <div class="footer">
+        <p>
+          &copy; 2023 Bansuri Vidya Mandir. All rights reserved.
+        </p>
+        <p>
+          If you have any questions, please contact us at <a href="mailto:bansurimandir@gmail.com">bansurimandir@gmail.com</a>
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
