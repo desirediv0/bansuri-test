@@ -10,7 +10,7 @@ import jwt from "jsonwebtoken";
 import { createSlug } from "../helper/Slug.js";
 import axios from "axios";
 import { SendEmail } from "../email/SendEmail.js";
-import xlsx from 'xlsx';
+import xlsx from "xlsx";
 
 const SALT_ROUNDS = 12;
 const TOKEN_EXPIRY = 2 * 60 * 60 * 1000; // 2 hours
@@ -142,8 +142,8 @@ export const verifyEmail = asyncHandler(async (req, res) => {
       verificationTokenExpiry: true,
       name: true,
       email: true,
-      role: true
-    }
+      role: true,
+    },
   });
 
   if (!user) {
@@ -496,7 +496,8 @@ export const getAllUsers = asyncHandler(async (req, res) => {
       isVerified: true,
       provider: true,
       slug: true,
-
+      createdAt: true,
+      updatedAt: true,
     },
   });
 
@@ -504,9 +505,17 @@ export const getAllUsers = asyncHandler(async (req, res) => {
     throw new ApiError(404, "No users found");
   }
 
+  const totalUsers = await prisma.user.count();
+
   return res
     .status(200)
-    .json(new ApiResponsive(200, { users }, "Users fetched successfully"));
+    .json(
+      new ApiResponsive(
+        200,
+        { users, totalUsers },
+        "Users fetched successfully"
+      )
+    );
 });
 
 export const checkUserLoggedIn = asyncHandler(async (req, res) => {
@@ -635,7 +644,7 @@ export const googleAuth = asyncHandler(async (req, res) => {
 
     // Check if user exists with email
     let user = await prisma.user.findFirst({
-      where: { email }
+      where: { email },
     });
 
     // If user exists with credentials, throw error
@@ -800,7 +809,10 @@ export const AdminUpdateUser = asyncHandler(async (req, res) => {
   }
 
   if (cleanedUpdateData.password) {
-    const hashedPassword = await bcrypt.hash(cleanedUpdateData.password, SALT_ROUNDS);
+    const hashedPassword = await bcrypt.hash(
+      cleanedUpdateData.password,
+      SALT_ROUNDS
+    );
     cleanedUpdateData.password = hashedPassword;
   }
 
@@ -872,7 +884,6 @@ export const AdminDeleteUser = asyncHandler(async (req, res) => {
     where: { userId: user.id },
   });
 
-
   // Finally, delete the user
   await prisma.user.delete({
     where: { slug },
@@ -889,35 +900,36 @@ export const AdminDeleteUser = asyncHandler(async (req, res) => {
     );
 });
 
-
 export const ImportDataFromExcel = asyncHandler(async (req, res) => {
   try {
     if (!req.file) {
       throw new ApiError(400, "Please upload an Excel file");
     }
 
-    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
     const jsonData = xlsx.utils.sheet_to_json(worksheet);
 
     const results = {
       successful: 0,
       failed: 0,
-      errors: []
+      errors: [],
     };
 
     for (const row of jsonData) {
       try {
         // Validate required fields
         if (!row.name || !row.email || !row.password) {
-          results.errors.push(`Row with email ${row.email || 'unknown'}: Missing required fields`);
+          results.errors.push(
+            `Row with email ${row.email || "unknown"}: Missing required fields`
+          );
           results.failed++;
           continue;
         }
 
         // Check if user already exists
         const existingUser = await prisma.user.findFirst({
-          where: { email: row.email }
+          where: { email: row.email },
         });
 
         if (existingUser) {
@@ -941,8 +953,6 @@ export const ImportDataFromExcel = asyncHandler(async (req, res) => {
           counter++;
         }
 
-
-
         // Create user
         await prisma.user.create({
           data: {
@@ -952,8 +962,8 @@ export const ImportDataFromExcel = asyncHandler(async (req, res) => {
             slug: uniqueSlug,
             isVerified: true,
             provider: "credentials",
-            role: "STUDENT"
-          }
+            role: "STUDENT",
+          },
         });
 
         results.successful++;
@@ -963,14 +973,15 @@ export const ImportDataFromExcel = asyncHandler(async (req, res) => {
       }
     }
 
-    return res.status(200).json(
-      new ApiResponsive(
-        200,
-        { results },
-        `Import completed. Successfully imported ${results.successful} users. Failed: ${results.failed}`
-      )
-    );
-
+    return res
+      .status(200)
+      .json(
+        new ApiResponsive(
+          200,
+          { results },
+          `Import completed. Successfully imported ${results.successful} users. Failed: ${results.failed}`
+        )
+      );
   } catch (error) {
     throw new ApiError(500, "Failed to process Excel file: " + error.message);
   }
