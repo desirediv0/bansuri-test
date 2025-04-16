@@ -565,8 +565,8 @@ export interface ChapterDataNew {
   updatedAt: string;
   duration?: number;
   progress?: {
-    watchedTime: number
-  }
+    watchedTime: number;
+  };
   pdfUrl?: string;
   audioUrl?: string;
 }
@@ -589,26 +589,26 @@ export interface AnimatedTextProps2 {
 }
 
 export interface ReviewSectionProps {
-  courseId: string
-  isEnrolled: boolean
-  hasPurchased: boolean
-  userId?: string
+  courseId: string;
+  isEnrolled: boolean;
+  hasPurchased: boolean;
+  userId?: string;
 }
 
 export interface Review {
-  id: string
-  rating: number
-  comment?: string
-  isEdited: boolean
-  userId: string
-  courseId: string
-  createdAt: string
-  updatedAt: string
+  id: string;
+  rating: number;
+  comment?: string;
+  isEdited: boolean;
+  userId: string;
+  courseId: string;
+  createdAt: string;
+  updatedAt: string;
   user: {
-    id: string
-    name: string
-    email: string
-  }
+    id: string;
+    name: string;
+    email: string;
+  };
 }
 
 export interface Fee {
@@ -677,7 +677,6 @@ export interface AnimatedTextProps {
   text: string;
   className?: string;
   delay?: number;
-
 }
 
 export interface Course2 {
@@ -694,18 +693,17 @@ export interface CourseCard2Props {
 }
 
 export type CourseCategory =
-  | 'All'
-  | 'DEVELOPMENT'
-  | 'DESIGN'
-  | 'CLOUD'
-  | 'MARKETING'
-  | 'BUSINESS';
+  | "All"
+  | "DEVELOPMENT"
+  | "DESIGN"
+  | "CLOUD"
+  | "MARKETING"
+  | "BUSINESS";
 
 export interface CourseListingProps {
   defaultCategory?: CourseCategory;
   limit?: number;
 }
-
 
 export interface CustomButtonProps {
   primaryText: string;
@@ -713,7 +711,7 @@ export interface CustomButtonProps {
   icon?: ReactNode;
   href?: string;
   className?: string;
-  variant?: 'filled' | 'outlined';
+  variant?: "filled" | "outlined";
   bgColor?: string;
   textColor?: string;
   hoverBgColor?: string;
@@ -741,8 +739,8 @@ export interface HeroSectionProps {
   buttons?: ReactNode;
   stats?: StatType[];
   className?: string;
-  scale?: number
-  variant?: 'home' | 'page';
+  scale?: number;
+  variant?: "home" | "page";
   backgroundImage?: string;
 }
 

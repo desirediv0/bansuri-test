@@ -9,7 +9,6 @@ import { scrollToSection } from "../../_components/smoothScroll";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/helper/AuthContext";
 import ClassCard from "./components/ClassCard";
-import { useRouter } from "next/navigation";
 
 export default function LiveClasses() {
   const [isVideoOpen, setIsVideoOpen] = useState(false);
@@ -17,11 +16,8 @@ export default function LiveClasses() {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { isAuthenticated } = useAuth();
-  const router = useRouter();
 
   useEffect(() => {
-    console.log("LiveClasses component mounted");
-    console.log("API URL:", process.env.NEXT_PUBLIC_API_URL);
     fetchClasses();
   }, []);
 
@@ -58,7 +54,6 @@ export default function LiveClasses() {
         title="Live Classes"
         description="Embark on your journey to flute mastery with our pre-recorded courses, interactive live classes, and immersive offline batches designed to suit every learner's needs."
         variant="page"
-        backgroundImage="/live-classes-bg.jpg"
         buttons={
           <>
             <CustomButton

@@ -1,0 +1,32 @@
+# Dependency directories
+node_modules/
+dist/
+build/
+
+# Logs
+logs/
+*.log
+
+# Cache directories
+.cache/
+.next/
+.nuxt/
+.vuepress/dist
+.serverless/
+
+# Coverage directories
+coverage/
+
+# Environment variables
+.env
+.env.*
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+Thumbs.db 
