@@ -25,15 +25,8 @@ export default function LiveClasses() {
     try {
       setLoading(true);
       const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/zoom/sessions?includeAll=true`;
-      console.log("Fetching classes from:", apiUrl);
 
       const response = await axios.get(apiUrl);
-      console.log("Classes fetched:", response.data.data);
-
-      // Check if classes have IDs
-      if (response.data.data && response.data.data.length > 0) {
-        console.log("First class ID:", response.data.data[0].id);
-      }
 
       setClasses(response.data.data);
     } catch (error) {

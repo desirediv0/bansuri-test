@@ -12,7 +12,7 @@ export function AnimatedDots() {
       const newDots: Dot[] = [];
       const numDots = Math.floor(
         (window.innerWidth * window.innerHeight) / 30000
-        
+
       );
 
       for (let i = 0; i < numDots; i++) {

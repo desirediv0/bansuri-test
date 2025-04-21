@@ -20,13 +20,8 @@ export default function ClassCard({
   isAuthenticated,
 }: ClassCardProps) {
   if (!classData || !classData.id) {
-    console.error("ClassCard: Missing classData or class ID", classData);
     return null;
   }
-
-  console.log("Rendering class card with ID:", classData.id);
-
-  const defaultThumbnail = "/images/default-class-thumbnail.jpg";
 
   return (
     <Link href={`/live-classes/${classData.id}`} prefetch={false}>
@@ -39,7 +34,7 @@ export default function ClassCard({
         <Card className="w-full overflow-hidden bg-white shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-200 rounded-xl group">
           <div className="relative h-56 w-full overflow-hidden">
             <Image
-              src={classData.thumbnailUrl || defaultThumbnail}
+              src={classData.thumbnailUrl}
               alt={classData.title}
               fill
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
@@ -63,7 +58,7 @@ export default function ClassCard({
                 </motion.div>
               </div>
             )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-60"></div>
+            {/* <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-60"></div> */}
             <div className="absolute bottom-3 left-3">
               <Badge
                 variant="outline"
