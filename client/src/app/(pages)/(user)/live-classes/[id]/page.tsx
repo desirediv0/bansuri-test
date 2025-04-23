@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import axios from "axios";
 import Image from "next/image";
@@ -13,6 +13,11 @@ import {
   Info,
   Share2,
   Loader2,
+  CheckCircle2,
+  IndianRupee,
+  Check,
+  Video,
+  Copy,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -20,7 +25,15 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/helper/AuthContext";
 import PurchaseDialog from "../components/PurchaseDialog";
+import RegistrationDialog from "../components/RegistrationDialog";
+import CourseAccessDialog from "../components/CourseAccessDialog";
 import { HeroSection } from "@/app/(pages)/_components/HeroSectionProps";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 export default function ClassDetails() {
   const params = useParams();
@@ -33,14 +46,30 @@ export default function ClassDetails() {
   const [classData, setClassData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showPurchaseDialog, setShowPurchaseDialog] = useState(false);
+  const [showRegistrationDialog, setShowRegistrationDialog] = useState(false);
+  const [showCourseAccessDialog, setShowCourseAccessDialog] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [hasAccessToLinks, setHasAccessToLinks] = useState(false);
+  const [apiChecksCompleted, setApiChecksCompleted] = useState({
+    fetchClassDetails: false,
+    checkSubscription: false,
+    checkPaymentStatus: false,
+  });
 
   useEffect(() => {
     if (id) {
+      setApiChecksCompleted({
+        fetchClassDetails: false,
+        checkSubscription: false,
+        checkPaymentStatus: false,
+      });
+
       fetchClassDetails();
-      // If user is authenticated, check subscription status separately
+
       if (isAuthenticated) {
         checkSubscriptionStatus();
+        checkPaymentStatus();
       }
     } else {
       toast({
@@ -52,9 +81,21 @@ export default function ClassDetails() {
     }
   }, [id, isAuthenticated]);
 
+  const determineUserStatus = () => {
+    const userIsRegistered =
+      isRegistered || (classData && classData.isRegistered);
+
+    const userHasAccess =
+      hasAccessToLinks || (classData && classData.hasAccessToLinks);
+
+    return { userIsRegistered, userHasAccess };
+  };
+
   const fetchClassDetails = async () => {
     try {
       setLoading(true);
+      console.log("Fetching class details...");
+
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/zoom/session/${id}`
       );
@@ -75,15 +116,17 @@ export default function ClassDetails() {
           minute: "2-digit",
           hour12: true,
         });
-
-        if (classData.endTime) {
-          const endDate = new Date(classData.endTime);
-          const durationMs = endDate.getTime() - startDate.getTime();
-          classData.duration = Math.round(durationMs / (1000 * 60));
-        }
       }
 
+      console.log(
+        "Class details fetched, reg status:",
+        classData.isRegistered,
+        "access status:",
+        classData.hasAccessToLinks
+      );
       setClassData(classData);
+
+      setApiChecksCompleted((prev) => ({ ...prev, fetchClassDetails: true }));
     } catch (error) {
       console.error("Error fetching class details:", error);
       toast({
@@ -99,16 +142,42 @@ export default function ClassDetails() {
 
   const checkSubscriptionStatus = async () => {
     try {
+      console.log("Checking subscription status...");
+
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/zoom/check-subscription/${id}`,
         { withCredentials: true }
       );
 
-      if (response.data.data.isSubscribed && classData) {
-        setClassData((prev: any) => ({
-          ...prev,
-          isSubscribed: true,
-        }));
+      if (response.data.data) {
+        const { isSubscribed, isRegistered, hasAccessToLinks, meetingDetails } =
+          response.data.data;
+
+        console.log("Subscription check results:", {
+          isRegistered,
+          hasAccessToLinks,
+        });
+
+        setIsRegistered(!!isRegistered);
+        setHasAccessToLinks(!!hasAccessToLinks);
+
+        setClassData((prev: any) => {
+          if (!prev) return prev;
+
+          return {
+            ...prev,
+            isSubscribed: !!isSubscribed,
+            isRegistered: !!isRegistered,
+            hasAccessToLinks: !!hasAccessToLinks,
+            ...(hasAccessToLinks && meetingDetails
+              ? {
+                  zoomLink: meetingDetails.link || prev.zoomLink,
+                  zoomMeetingId: meetingDetails.meetingId || prev.zoomMeetingId,
+                  zoomPassword: meetingDetails.password || prev.zoomPassword,
+                }
+              : {}),
+          };
+        });
 
         if (response.data.data.reactivated) {
           toast({
@@ -117,12 +186,60 @@ export default function ClassDetails() {
           });
         }
       }
+
+      setApiChecksCompleted((prev) => ({ ...prev, checkSubscription: true }));
     } catch (error) {
       console.error("Error checking subscription status:", error);
+      setApiChecksCompleted((prev) => ({ ...prev, checkSubscription: true }));
     }
   };
 
-  const handleJoinClass = async () => {
+  const checkPaymentStatus = async () => {
+    try {
+      console.log("Checking payment status...");
+
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom/check-payment-status/${id}`,
+        { withCredentials: true }
+      );
+
+      const { hasRegistered, hasPaidCourseFee } = response.data.data;
+
+      console.log("Payment status results:", {
+        hasRegistered,
+        hasPaidCourseFee,
+      });
+
+      setIsRegistered(!!hasRegistered);
+      setHasAccessToLinks(!!hasPaidCourseFee);
+
+      setClassData((prev: any) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          isRegistered: !!hasRegistered,
+          hasAccessToLinks: !!hasPaidCourseFee,
+        };
+      });
+
+      if (hasPaidCourseFee) {
+        router.push("/user-profile");
+        toast({
+          title: "Already Paid",
+          description:
+            "You've already paid for this class. View details in your profile.",
+        });
+      }
+
+      setApiChecksCompleted((prev) => ({ ...prev, checkPaymentStatus: true }));
+    } catch (error) {
+      console.error("Error checking payment status:", error);
+      setApiChecksCompleted((prev) => ({ ...prev, checkPaymentStatus: true }));
+    }
+  };
+
+  const handleJoinClass = async (id?: string, isModule: boolean = false) => {
     if (!isAuthenticated) {
       router.push(
         `/auth?redirect=${encodeURIComponent(window.location.pathname)}`
@@ -132,18 +249,27 @@ export default function ClassDetails() {
 
     try {
       setIsJoining(true);
-      // Check if user is subscribed
+      let targetId = id || classData.id;
+      let queryParams = "";
+
+      if (isModule && id) {
+        queryParams = `?moduleId=${id}`;
+      }
+
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/check-subscription/${id}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom/check-subscription/${classData.id}${queryParams}`,
         { withCredentials: true }
       );
 
       if (response.data.data.isSubscribed) {
-        if (classData.zoomLink) {
-          window.open(classData.zoomLink, "_blank");
-        } else {
-          window.open(response.data.data.meetingDetails?.link, "_blank");
-        }
+        window.open(response.data.data.meetingDetails.link, "_blank");
+      } else if (response.data.data.isPending) {
+        toast({
+          title: "Pending Approval",
+          description:
+            "Your subscription is pending approval from the administrator.",
+          variant: "destructive",
+        });
       } else {
         toast({
           title: "Access Denied",
@@ -170,18 +296,49 @@ export default function ClassDetails() {
       );
       return;
     }
+
+    const { userIsRegistered, userHasAccess } = determineUserStatus();
+
+    if (userIsRegistered || userHasAccess) {
+      toast({
+        title: "Already Registered",
+        description: userHasAccess
+          ? "You already have full access to this class."
+          : "You've already registered for this class. Please pay the course fee to access the links.",
+      });
+      return;
+    }
+
     setShowPurchaseDialog(true);
   };
 
   const handlePurchaseComplete = () => {
     setShowPurchaseDialog(false);
-    // Force reload class details including subscription status
     fetchClassDetails();
-    // Explicitly check subscription status
     checkSubscriptionStatus();
     toast({
       title: "Success",
       description: "Class purchased successfully!",
+    });
+  };
+
+  const handleRegistrationComplete = () => {
+    setShowRegistrationDialog(false);
+    fetchClassDetails();
+    checkSubscriptionStatus();
+    toast({
+      title: "Success",
+      description: "Registration completed successfully!",
+    });
+  };
+
+  const handleCourseAccessComplete = () => {
+    setShowCourseAccessDialog(false);
+    fetchClassDetails();
+    checkSubscriptionStatus();
+    toast({
+      title: "Success",
+      description: "Course access payment completed successfully!",
     });
   };
 
@@ -228,6 +385,19 @@ export default function ClassDetails() {
     );
   }
 
+  // Determine user status for all UI elements
+  const { userIsRegistered, userHasAccess } = determineUserStatus();
+
+  console.log("Final render status:", {
+    stateIsRegistered: isRegistered,
+    stateHasAccess: hasAccessToLinks,
+    classDataIsRegistered: classData?.isRegistered,
+    classDataHasAccess: classData?.hasAccessToLinks,
+    computedIsRegistered: userIsRegistered,
+    computedHasAccess: userHasAccess,
+    apiChecks: apiChecksCompleted,
+  });
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#F8F9FA] to-[#F3F8F8]">
       <HeroSection
@@ -249,7 +419,10 @@ export default function ClassDetails() {
           >
             <div className="relative h-64 md:h-96 w-full rounded-xl overflow-hidden mb-6">
               <Image
-                src={classData.thumbnailUrl}
+                src={
+                  classData.thumbnailUrl ||
+                  "/images/default-class-thumbnail.jpg"
+                }
                 alt={classData.title}
                 fill
                 priority
@@ -257,13 +430,13 @@ export default function ClassDetails() {
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
 
-              {isAuthenticated && classData.isSubscribed && (
+              {isAuthenticated && userIsRegistered && (
                 <div className="absolute top-4 right-4">
                   <Badge
                     variant="secondary"
-                    className="px-3 py-1.5 bg-[#af1d33] text-white font-medium"
+                    className="px-3 py-1.5 bg-green-600 text-white font-medium"
                   >
-                    Enrolled
+                    Registered
                   </Badge>
                 </div>
               )}
@@ -299,64 +472,103 @@ export default function ClassDetails() {
               </p>
             </div>
 
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h2 className="text-xl font-bold mb-4 text-gray-800">
-                What You'll Learn
-              </h2>
-              <ul className="space-y-3">
-                {/* If the API provides learning points as an array, use them */}
-                {classData.learningPoints &&
-                Array.isArray(classData.learningPoints) &&
-                classData.learningPoints.length > 0
-                  ? classData.learningPoints.map(
-                      (point: string, idx: number) => (
-                        <li key={idx} className="flex items-start">
-                          <div className="h-5 w-5 rounded-full bg-green-100 flex items-center justify-center text-green-600 mr-3 mt-0.5">
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              className="h-3 w-3"
-                              viewBox="0 0 20 20"
-                              fill="currentColor"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
+            {classData.hasModules &&
+              classData.modules &&
+              classData.modules.length > 0 && (
+                <div className="bg-white rounded-xl shadow-md p-6 mb-8">
+                  <h2 className="text-xl font-bold mb-4 text-gray-800">
+                    Class Modules
+                  </h2>
+                  <Accordion type="single" collapsible className="space-y-3">
+                    {classData.modules.map((module: any, index: number) => (
+                      <AccordionItem
+                        key={module.id}
+                        value={module.id}
+                        className="border rounded-lg overflow-hidden"
+                      >
+                        <AccordionTrigger className="px-4 py-3 hover:bg-gray-50">
+                          <div className="flex items-center text-left">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 mr-3">
+                              {index + 1}
+                            </div>
+                            <div>
+                              <h3 className="font-semibold text-base">
+                                {module.title}
+                              </h3>
+                              <div className="flex items-center text-gray-500 text-sm mt-1">
+                                <Calendar className="h-3.5 w-3.5 mr-1.5" />
+                                <span>
+                                  {new Date(
+                                    module.startTime
+                                  ).toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  })}
+                                </span>
+                                <Clock className="h-3.5 w-3.5 ml-3 mr-1.5" />
+                                <span>
+                                  {new Date(
+                                    module.startTime
+                                  ).toLocaleTimeString("en-US", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    hour12: true,
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                            {module.isFree && (
+                              <span className="ml-auto mr-4 px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">
+                                Free
+                              </span>
+                            )}
                           </div>
-                          <span className="text-gray-700">{point}</span>
-                        </li>
-                      )
-                    )
-                  : /* Default learning points if none are provided */
-                    [
-                      "Basic techniques of flute playing",
-                      "Proper breath control and embouchure",
-                      "Reading and interpreting music notation",
-                      "Performing simple melodies and exercises",
-                      "Understanding rhythm and timing",
-                    ].map((point, idx) => (
-                      <li key={idx} className="flex items-start">
-                        <div className="h-5 w-5 rounded-full bg-green-100 flex items-center justify-center text-green-600 mr-3 mt-0.5">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-3 w-3"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </div>
-                        <span className="text-gray-700">{point}</span>
-                      </li>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-4 py-3 bg-gray-50 border-t">
+                          <p className="text-gray-700 mb-3">
+                            {module.description ||
+                              `Session ${index + 1} of this live class series.`}
+                          </p>
+                          {isAuthenticated && module.isFree && (
+                            <Button
+                              className="bg-green-600 hover:bg-green-700 text-white mt-2"
+                              size="sm"
+                              onClick={() => handleJoinClass(module.id, true)}
+                            >
+                              <CheckCircle2 className="mr-2 h-4 w-4" />
+                              Join Free Module
+                            </Button>
+                          )}
+                        </AccordionContent>
+                      </AccordionItem>
                     ))}
-              </ul>
-            </div>
+                  </Accordion>
+                </div>
+              )}
+
+            {classData.currentRange && (
+              <div className="bg-white rounded-xl shadow-md p-6">
+                <h2 className="text-xl font-bold mb-4 text-gray-800">
+                  Current Raga
+                </h2>
+                <p className="text-gray-700">
+                  {classData.currentRange ||
+                    "No current raga information available."}
+                </p>
+              </div>
+            )}
+
+            {classData.currentOrientation && (
+              <div className="bg-white rounded-xl shadow-md p-6 mt-8">
+                <h2 className="text-xl font-bold mb-4 text-gray-800">
+                  Current Orientation
+                </h2>
+                <p className="text-gray-700 whitespace-pre-line">
+                  {classData.currentOrientation}
+                </p>
+              </div>
+            )}
           </motion.div>
 
           {/* Right Column - Class Details & CTA */}
@@ -367,23 +579,54 @@ export default function ClassDetails() {
           >
             <div className="bg-white rounded-xl shadow-md p-6 sticky top-24">
               <div className="mb-6">
-                <div className="text-3xl font-bold text-[#af1d33] mb-1">
-                  ₹{classData.price}
-                </div>
-                {classData.originalPrice &&
-                  classData.originalPrice > classData.price && (
-                    <div className="flex items-center">
-                      <span className="text-gray-500 line-through mr-2">
-                        ₹{classData.originalPrice}
-                      </span>
-                      <Badge className="bg-green-600">
-                        {Math.round(
-                          (1 - classData.price / classData.originalPrice) * 100
-                        )}
-                        % OFF
-                      </Badge>
-                    </div>
+                <div className="flex flex-col gap-2">
+                  {isAuthenticated &&
+                  (isRegistered || classData.isRegistered) ? (
+                    hasAccessToLinks || classData.hasAccessToLinks ? (
+                      <div className="text-center py-2">
+                        <span className="text-green-600 font-semibold text-lg flex items-center justify-center">
+                          <CheckCircle2 className="mr-2 h-5 w-5" />
+                          You have full access to this class
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-700">Course Fee:</span>
+                        <span className="text-xl font-bold text-[#af1d33]">
+                          ₹{classData.courseFee}
+                        </span>
+                      </div>
+                    )
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-700">Registration Fee:</span>
+                        <span className="text-xl font-bold text-[#af1d33]">
+                          ₹{classData.registrationFee}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-700">Course Fee:</span>
+                        <span className="text-xl font-bold text-[#af1d33]">
+                          ₹{classData.courseFee}
+                        </span>
+                      </div>
+                      <div className="h-px bg-gray-200 my-2"></div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-700 font-medium">
+                          Total:
+                        </span>
+                        <span className="text-2xl font-bold text-[#af1d33]">
+                          ₹
+                          {(
+                            (classData.registrationFee || 0) +
+                            (classData.courseFee || 0)
+                          ).toFixed(2)}
+                        </span>
+                      </div>
+                    </>
                   )}
+                </div>
               </div>
 
               <div className="space-y-4 mb-6">
@@ -420,27 +663,51 @@ export default function ClassDetails() {
               </div>
 
               <div className="space-y-3">
-                {isAuthenticated && classData.isSubscribed ? (
-                  <Button
-                    className="w-full bg-green-600 hover:bg-green-700 text-white py-6 rounded-full font-semibold"
-                    onClick={handleJoinClass}
-                    disabled={isJoining}
-                  >
-                    {isJoining ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
+                {isAuthenticated ? (
+                  <>
+                    {hasAccessToLinks || classData.hasAccessToLinks ? (
+                      <Button
+                        className="w-full bg-green-600 hover:bg-green-700 text-white py-6 rounded-full font-semibold"
+                        onClick={() => handleJoinClass()}
+                        disabled={isJoining}
+                      >
+                        {isJoining ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Processing...
+                          </>
+                        ) : (
+                          "Join Class Now"
+                        )}
+                      </Button>
+                    ) : isRegistered || classData.isRegistered ? (
+                      <Button
+                        className="w-full bg-[#af1d33] hover:bg-[#8f1829] text-white py-6 rounded-full font-semibold"
+                        onClick={() => setShowCourseAccessDialog(true)}
+                      >
+                        <IndianRupee className="mr-2 h-5 w-5" />
+                        Pay Course Fee & Access Links
+                      </Button>
                     ) : (
-                      "Join Class Now"
+                      <Button
+                        className="w-full bg-[#af1d33] hover:bg-[#8f1829] text-white py-6 rounded-full font-semibold"
+                        onClick={() => setShowRegistrationDialog(true)}
+                      >
+                        <IndianRupee className="mr-2 h-5 w-5" />
+                        Register (₹{classData.registrationFee})
+                      </Button>
                     )}
-                  </Button>
+                  </>
                 ) : (
                   <Button
                     className="w-full bg-[#af1d33] hover:bg-[#8f1829] text-white py-6 rounded-full font-semibold"
-                    onClick={handlePurchase}
+                    onClick={() =>
+                      router.push(
+                        `/auth?redirect=${encodeURIComponent(window.location.pathname)}`
+                      )
+                    }
                   >
-                    {isAuthenticated ? "Purchase Class" : "Sign In to Purchase"}
+                    Sign In to Register
                   </Button>
                 )}
 
@@ -459,28 +726,147 @@ export default function ClassDetails() {
                 <div className="text-blue-800">
                   <p className="font-medium">Access Information</p>
                   <p className="mt-1">
-                    {isAuthenticated && classData.isSubscribed ? (
-                      <>
-                        Join using Zoom ID:{" "}
-                        <span className="font-semibold">
-                          {classData.zoomMeetingId}
-                        </span>
-                        {classData.zoomPassword && (
-                          <>
-                            {" "}
-                            with password:{" "}
-                            <span className="font-semibold">
-                              {classData.zoomPassword}
-                            </span>
-                          </>
-                        )}
-                      </>
+                    {isAuthenticated ? (
+                      hasAccessToLinks || classData.hasAccessToLinks ? (
+                        <>
+                          You have full access to this class. Click the "Join
+                          Class Now" button or use the Zoom details below to
+                          join at the scheduled time.
+                        </>
+                      ) : isRegistered || classData.isRegistered ? (
+                        <>
+                          You're registered for this class but you need to pay
+                          the course fee (₹{classData.courseFee}) to access
+                          meeting details. Click "Pay Course Fee" above.
+                        </>
+                      ) : (
+                        <>
+                          Complete your registration by paying the registration
+                          fee (₹{classData.registrationFee}). After
+                          registration, you'll need to pay the course fee (₹
+                          {classData.courseFee}) to access the class.
+                        </>
+                      )
                     ) : (
-                      "Once purchased, you'll receive instructions to join the class at the scheduled time. The class will be conducted live over Zoom."
+                      "Sign in to register for this class. After registration and payment, you'll receive access to join at the scheduled time."
                     )}
                   </p>
                 </div>
               </div>
+
+              {/* Display Zoom meeting details when user has access */}
+              {isAuthenticated &&
+                (hasAccessToLinks || classData.hasAccessToLinks) &&
+                classData.zoomLink && (
+                  <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-100">
+                    <h3 className="font-medium text-green-800 mb-2 flex items-center">
+                      <Video className="h-5 w-5 text-green-600 mr-2" />
+                      Zoom Meeting Details
+                    </h3>
+
+                    <div className="space-y-3 text-sm">
+                      <div className="flex flex-col">
+                        <span className="font-medium text-gray-700">
+                          Meeting Link:
+                        </span>
+                        <div className="flex items-center mt-1">
+                          <a
+                            href={classData.zoomLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline break-words flex-1 bg-white px-3 py-2 rounded-l-md border border-gray-200"
+                          >
+                            {classData.zoomLink.substring(0, 40)}...
+                          </a>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-10 rounded-l-none"
+                            onClick={() => {
+                              navigator.clipboard.writeText(
+                                classData.zoomLink || ""
+                              );
+                              toast({
+                                description: "Meeting link copied to clipboard",
+                              });
+                            }}
+                          >
+                            <Copy className="h-4 w-4 mr-2" />
+                            Copy
+                          </Button>
+                        </div>
+                      </div>
+
+                      {classData.zoomMeetingId && (
+                        <div className="flex flex-col">
+                          <span className="font-medium text-gray-700">
+                            Meeting ID:
+                          </span>
+                          <div className="flex items-center mt-1">
+                            <code className="bg-white px-3 py-2 rounded-l-md border border-gray-200 text-gray-800 flex-1">
+                              {classData.zoomMeetingId}
+                            </code>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="h-10 rounded-l-none"
+                              onClick={() => {
+                                navigator.clipboard.writeText(
+                                  classData.zoomMeetingId || ""
+                                );
+                                toast({
+                                  description: "Meeting ID copied to clipboard",
+                                });
+                              }}
+                            >
+                              <Copy className="h-4 w-4 mr-2" />
+                              Copy
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {classData.zoomPassword && (
+                        <div className="flex flex-col">
+                          <span className="font-medium text-gray-700">
+                            Password:
+                          </span>
+                          <div className="flex items-center mt-1">
+                            <code className="bg-white px-3 py-2 rounded-l-md border border-gray-200 text-gray-800 flex-1">
+                              {classData.zoomPassword}
+                            </code>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="h-10 rounded-l-none"
+                              onClick={() => {
+                                navigator.clipboard.writeText(
+                                  classData.zoomPassword || ""
+                                );
+                                toast({
+                                  description: "Password copied to clipboard",
+                                });
+                              }}
+                            >
+                              <Copy className="h-4 w-4 mr-2" />
+                              Copy
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      <Button
+                        className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-md font-semibold flex items-center justify-center"
+                        onClick={() =>
+                          window.open(classData.zoomLink, "_blank")
+                        }
+                      >
+                        <Video className="mr-2 h-5 w-5" />
+                        Join Zoom Meeting Now
+                      </Button>
+                    </div>
+                  </div>
+                )}
             </div>
           </motion.div>
         </div>
@@ -491,6 +877,22 @@ export default function ClassDetails() {
           classData={classData}
           onClose={() => setShowPurchaseDialog(false)}
           onSuccess={handlePurchaseComplete}
+        />
+      )}
+
+      {showRegistrationDialog && (
+        <RegistrationDialog
+          classData={classData}
+          onClose={() => setShowRegistrationDialog(false)}
+          onSuccess={handleRegistrationComplete}
+        />
+      )}
+
+      {showCourseAccessDialog && (
+        <CourseAccessDialog
+          classData={classData}
+          onClose={() => setShowCourseAccessDialog(false)}
+          onSuccess={handleCourseAccessComplete}
         />
       )}
     </div>

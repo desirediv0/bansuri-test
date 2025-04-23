@@ -485,24 +485,31 @@ model Contact {
 }
 
 model ZoomSession {
-  id             String   @id @default(uuid())
-  title          String
-  description    String?
-  startTime      DateTime
-  endTime        DateTime
-  zoomLink       String?
-  zoomMeetingId  String?
-  zoomPassword   String?
-  isActive       Boolean  @default(true)
-  price          Float    @default(0)
-  capacity       Int?
-  recurringClass Boolean  @default(false)
-  thumbnailUrl   String?
+  id                 String   @id @default(uuid())
+  title              String
+  description        String?
+  startTime          DateTime
+  endTime            DateTime
+  zoomLink           String?
+  zoomMeetingId      String?
+  zoomPassword       String?
+  isActive           Boolean  @default(true)
+  price              Float    @default(0)
+  registrationFee    Float    @default(0)
+  courseFee          Float    @default(0)
+  capacity           Int?
+  recurringClass     Boolean  @default(false)
+  thumbnailUrl       String?
+  hasModules         Boolean  @default(false)
+  isFirstModuleFree  Boolean  @default(false)
+  currentRange       String?
+  currentOrientation String?
 
   // Relations
   subscribedUsers ZoomSubscription[]
-  createdBy       User               @relation(fields: [userId], references: [id])
+  createdBy       User                @relation(fields: [userId], references: [id])
   userId          String
+  modules         ZoomSessionModule[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -514,24 +521,35 @@ enum SubscriptionStatus {
   ACTIVE
   EXPIRED
   CANCELLED
+  REJECTED
+  PENDING_APPROVAL
+  REGISTERED
 }
 
 model ZoomSubscription {
-  id        String             @id @default(uuid())
-  startDate DateTime           @default(now())
-  endDate   DateTime
-  status    SubscriptionStatus @default(ACTIVE)
+  id         String             @id @default(uuid())
+  startDate  DateTime           @default(now())
+  endDate    DateTime
+  status     SubscriptionStatus @default(ACTIVE)
+  isApproved Boolean            @default(false)
+  moduleId   String?
+
+  // Registration status
+  isRegistered     Boolean @default(false)
+  hasAccessToLinks Boolean @default(false)
 
   // Relations
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId        String
-  zoomSession   ZoomSession @relation(fields: [zoomSessionId], references: [id], onDelete: Cascade)
+  zoomSession   ZoomSession        @relation(fields: [zoomSessionId], references: [id], onDelete: Cascade)
   zoomSessionId String
+  module        ZoomSessionModule? @relation(fields: [moduleId], references: [id])
 
   // Payment tracking
-  lastPaymentDate DateTime      @default(now())
-  nextPaymentDate DateTime
-  payments        ZoomPayment[]
+  lastPaymentDate       DateTime      @default(now())
+  nextPaymentDate       DateTime
+  payments              ZoomPayment[]
+  registrationPaymentId String? // For tracking registration payments
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -539,6 +557,36 @@ model ZoomSubscription {
   @@unique([userId, zoomSessionId])
   @@index([userId])
   @@index([zoomSessionId])
+  @@index([moduleId])
+}
+
+model ZoomSessionModule {
+  id            String   @id @default(uuid())
+  title         String
+  description   String?
+  startTime     DateTime
+  endTime       DateTime
+  zoomLink      String?
+  zoomMeetingId String?
+  zoomPassword  String?
+  position      Int      @default(1)
+  isFree        Boolean  @default(false)
+
+  // Relations
+  zoomSession   ZoomSession        @relation(fields: [zoomSessionId], references: [id], onDelete: Cascade)
+  zoomSessionId String
+  subscriptions ZoomSubscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([zoomSessionId])
+}
+
+enum PaymentType {
+  REGISTRATION
+  COURSE_ACCESS
+  FULL_PAYMENT
 }
 
 model ZoomPayment {
@@ -549,6 +597,7 @@ model ZoomPayment {
   razorpay_signature  String?
   status              PaymentStatus @default(PENDING)
   receiptNumber       String        @unique
+  paymentType         PaymentType   @default(FULL_PAYMENT)
 
   // Relations
   subscription   ZoomSubscription @relation(fields: [subscriptionId], references: [id])

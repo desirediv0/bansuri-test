@@ -21,6 +21,15 @@ import {
   getAllZoomSubscriptions,
   adminCancelZoomSubscription,
   getZoomSession,
+  approveZoomSubscription,
+  rejectZoomSubscription,
+  registerForZoomSession,
+  verifyRegistrationPayment,
+  payCourseAccess,
+  verifyCourseAccessPayment,
+  activateSessionLinks,
+  getPendingApprovals,
+  checkZoomPaymentStatus,
 } from "../controllers/zoom.controllers.js";
 
 const router = Router();
@@ -76,6 +85,32 @@ router.post(
   verifyAdmin,
   adminCancelZoomSubscription
 );
+// Add new approval routes
+router.get(
+  "/admin/pending-approvals",
+  verifyJWTToken,
+  verifyAdmin,
+  getPendingApprovals
+);
+router.post(
+  "/admin/approve-subscription/:subscriptionId",
+  verifyJWTToken,
+  verifyAdmin,
+  approveZoomSubscription
+);
+router.post(
+  "/admin/reject-subscription/:subscriptionId",
+  verifyJWTToken,
+  verifyAdmin,
+  rejectZoomSubscription
+);
+// Add route for activating session links
+router.post(
+  "/admin/activate-session/:sessionId",
+  verifyJWTToken,
+  verifyAdmin,
+  activateSessionLinks
+);
 
 // User routes
 
@@ -92,7 +127,20 @@ router.get(
   verifyJWTToken,
   checkZoomSubscription
 );
+router.get(
+  "/check-payment-status/:zoomSessionId",
+  verifyJWTToken,
+  checkZoomPaymentStatus
+);
 router.get("/receipt/:paymentId", verifyJWTToken, generateZoomReceipt);
+
+// Registration routes
+router.post("/register", verifyJWTToken, registerForZoomSession);
+router.post("/verify-registration", verifyJWTToken, verifyRegistrationPayment);
+
+// Course access routes
+router.post("/pay-course-access", verifyJWTToken, payCourseAccess);
+router.post("/verify-course-access", verifyJWTToken, verifyCourseAccessPayment);
 
 // Add this route for debugging
 router.get("/debug/all-sessions", verifyJWTToken, async (req, res) => {

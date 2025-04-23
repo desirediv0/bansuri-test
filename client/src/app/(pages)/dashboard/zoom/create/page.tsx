@@ -9,8 +9,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { FileUpload } from "@/components/ui/dropzone";
-import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  ArrowLeft,
+  Save,
+  Calendar,
+  Info,
+  Tag,
+  IndianRupee,
+  Clock,
+} from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 
 interface FormData {
   title: string;
@@ -19,6 +29,11 @@ interface FormData {
   endTime: string;
   price: string;
   thumbnailUrl: string;
+  registrationFee: string;
+  courseFee: string;
+  currentRange: string;
+  currentOrientation: string;
+  isActive: boolean;
 }
 
 export default function CreateZoomSessionPage() {
@@ -28,8 +43,13 @@ export default function CreateZoomSessionPage() {
     description: "",
     startTime: "",
     endTime: "",
-    price: "",
+    price: "0",
     thumbnailUrl: "",
+    registrationFee: "0",
+    courseFee: "0",
+    currentRange: "",
+    currentOrientation: "",
+    isActive: true,
   });
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -39,6 +59,10 @@ export default function CreateZoomSessionPage() {
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSwitchChange = (name: string, checked: boolean) => {
+    setFormData((prev) => ({ ...prev, [name]: checked }));
   };
 
   const handleImageUpload = (fileUrl: string) => {
@@ -53,7 +77,8 @@ export default function CreateZoomSessionPage() {
       !formData.title ||
       !formData.startTime ||
       !formData.endTime ||
-      !formData.price
+      !formData.registrationFee ||
+      !formData.courseFee
     ) {
       toast({
         title: "Validation Error",
@@ -75,18 +100,22 @@ export default function CreateZoomSessionPage() {
 
     setIsLoading(true);
     try {
-      // Only send fields that exist in your database
-      const payload = {
+      // Prepare payload
+      const payload: any = {
         title: formData.title,
         description: formData.description,
         startTime: formData.startTime,
         endTime: formData.endTime,
         price: parseFloat(formData.price),
+        registrationFee: parseFloat(formData.registrationFee),
+        courseFee: parseFloat(formData.courseFee),
+        currentRange: formData.currentRange || null,
+        currentOrientation: formData.currentOrientation || null,
+        isActive: formData.isActive,
       };
 
-      // Only include thumbnailUrl if it has a value
+      // Include thumbnailUrl if it has a value
       if (formData.thumbnailUrl) {
-        // @ts-ignore - In case the API doesn't support this field yet
         payload.thumbnailUrl = formData.thumbnailUrl;
       }
 
@@ -98,12 +127,12 @@ export default function CreateZoomSessionPage() {
 
       toast({
         title: "Success",
-        description: "Zoom session created successfully",
+        description: "Live class session created successfully",
       });
 
       router.push("/dashboard/zoom");
     } catch (error: any) {
-      console.error("Error creating zoom session:", error);
+      console.error("Error creating live class session:", error);
       toast({
         title: "Error",
         description:
@@ -117,7 +146,7 @@ export default function CreateZoomSessionPage() {
 
   return (
     <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex items-center gap-4 mb-2">
         <Button
           variant="ghost"
           onClick={() => router.back()}
@@ -128,97 +157,297 @@ export default function CreateZoomSessionPage() {
         </Button>
       </div>
 
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Create New Live Class</h1>
       </div>
 
       <Card>
-        <CardContent className="pt-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">Session Title *</Label>
-              <Input
-                id="title"
-                name="title"
-                value={formData.title}
-                onChange={handleChange}
-                placeholder="Enter session title"
-                required
-              />
-            </div>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-xl flex items-center">
+            <Info className="h-5 w-5 mr-2 text-blue-500" />
+            Class Information
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 gap-6">
+              {/* Basic Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="title" className="text-sm font-medium">
+                    Class Title <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="title"
+                    name="title"
+                    value={formData.title}
+                    onChange={handleChange}
+                    placeholder="Enter a descriptive title for your class"
+                    className="w-full"
+                    required
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                placeholder="Enter session description"
-                rows={3}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Thumbnail Image</Label>
-              <FileUpload
-                onUploadComplete={handleImageUpload}
-                existingImageUrl={formData.thumbnailUrl}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="startTime">Start Time *</Label>
-                <Input
-                  id="startTime"
-                  name="startTime"
-                  type="datetime-local"
-                  value={formData.startTime}
-                  onChange={handleChange}
-                  required
-                />
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="description" className="text-sm font-medium">
+                    Class Description
+                  </Label>
+                  <Textarea
+                    id="description"
+                    name="description"
+                    value={formData.description}
+                    onChange={handleChange}
+                    placeholder="Provide details about what students will learn"
+                    rows={4}
+                    className="resize-none"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="endTime">End Time *</Label>
-                <Input
-                  id="endTime"
-                  name="endTime"
-                  type="datetime-local"
-                  value={formData.endTime}
-                  onChange={handleChange}
-                  required
-                />
+              <Separator />
+
+              {/* Schedule */}
+              <div>
+                <h3 className="text-base font-medium mb-4 flex items-center">
+                  <Calendar className="h-4 w-4 mr-2 text-blue-500" />
+                  Schedule
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="startTime" className="text-sm font-medium">
+                      Start Time <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="relative">
+                      <Clock className="h-4 w-4 absolute left-3 top-3 text-gray-500" />
+                      <Input
+                        id="startTime"
+                        name="startTime"
+                        type="datetime-local"
+                        value={formData.startTime}
+                        onChange={handleChange}
+                        className="pl-10"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="endTime" className="text-sm font-medium">
+                      End Time <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="relative">
+                      <Clock className="h-4 w-4 absolute left-3 top-3 text-gray-500" />
+                      <Input
+                        id="endTime"
+                        name="endTime"
+                        type="datetime-local"
+                        value={formData.endTime}
+                        onChange={handleChange}
+                        className="pl-10"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="price">Monthly Price (₹) *</Label>
-              <Input
-                id="price"
-                name="price"
-                type="number"
-                value={formData.price}
-                onChange={handleChange}
-                placeholder="Enter price in INR"
-                min="0"
-                step="0.01"
-                required
-              />
-            </div>
+              <Separator />
 
-            <div className="flex justify-end gap-2 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => router.back()}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? "Creating..." : "Create Session"}
-              </Button>
+              {/* Pricing */}
+              <div>
+                <h3 className="text-base font-medium mb-4 flex items-center">
+                  <IndianRupee className="h-4 w-4 mr-2 text-blue-500" />
+                  Pricing
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="registrationFee"
+                      className="text-sm font-medium"
+                    >
+                      Registration Fee (₹){" "}
+                      <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-gray-500">
+                        ₹
+                      </span>
+                      <Input
+                        id="registrationFee"
+                        name="registrationFee"
+                        type="number"
+                        min="0"
+                        value={formData.registrationFee}
+                        onChange={handleChange}
+                        className="pl-7"
+                        required
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Initial fee to reserve a spot
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="courseFee" className="text-sm font-medium">
+                      Course Fee (₹) <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-gray-500">
+                        ₹
+                      </span>
+                      <Input
+                        id="courseFee"
+                        name="courseFee"
+                        type="number"
+                        min="0"
+                        value={formData.courseFee}
+                        onChange={handleChange}
+                        className="pl-7"
+                        required
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Fee to access class links
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="price" className="text-sm font-medium">
+                      Monthly Price (₹)
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-gray-500">
+                        ₹
+                      </span>
+                      <Input
+                        id="price"
+                        name="price"
+                        type="number"
+                        min="0"
+                        value={formData.price}
+                        onChange={handleChange}
+                        className="pl-7"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      For subscription model (optional)
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Class Details */}
+              <div>
+                <h3 className="text-base font-medium mb-4 flex items-center">
+                  <Tag className="h-4 w-4 mr-2 text-blue-500" />
+                  Class Details
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="currentRange"
+                      className="text-sm font-medium"
+                    >
+                      Current Raga
+                    </Label>
+                    <Input
+                      id="currentRange"
+                      name="currentRange"
+                      value={formData.currentRange}
+                      onChange={handleChange}
+                      placeholder="e.g., Madhyam Saptak, Sa - Pa"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Musical range covered in this class
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="currentOrientation"
+                      className="text-sm font-medium"
+                    >
+                      Current Orientation
+                    </Label>
+                    <Input
+                      id="currentOrientation"
+                      name="currentOrientation"
+                      value={formData.currentOrientation}
+                      onChange={handleChange}
+                      placeholder="e.g., Hindi Classical, Carnatic"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Musical style or orientation
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Thumbnail */}
+              <div>
+                <h3 className="text-base font-medium mb-4">Thumbnail Image</h3>
+                <FileUpload
+                  onUploadComplete={handleImageUpload}
+                  existingImageUrl={formData.thumbnailUrl}
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  Recommended size: 1280x720px (16:9 ratio)
+                </p>
+              </div>
+
+              <Separator />
+
+              {/* Settings */}
+              <div>
+                <h3 className="text-base font-medium mb-4">Settings</h3>
+                <div className="flex items-center justify-between py-2">
+                  <div>
+                    <Label htmlFor="isActive" className="text-sm font-medium">
+                      Active Status
+                    </Label>
+                    <p className="text-xs text-gray-500">
+                      Make this class visible to students
+                    </p>
+                  </div>
+                  <Switch
+                    id="isActive"
+                    checked={formData.isActive}
+                    onCheckedChange={(checked) =>
+                      handleSwitchChange("isActive", checked)
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 flex justify-end gap-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => router.push("/dashboard/zoom")}
+                  disabled={isLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  className="flex items-center gap-2"
+                >
+                  {isLoading ? (
+                    "Creating..."
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      Create Class
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </form>
         </CardContent>

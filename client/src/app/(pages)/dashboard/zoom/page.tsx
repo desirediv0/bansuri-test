@@ -6,12 +6,14 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Plus, RefreshCw } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Link2 } from "lucide-react";
 import ZoomSessionsTable from "./components/ZoomSessionsTable";
 import { useToast } from "@/hooks/use-toast";
 import ZoomAnalytics from "./components/ZoomAnalytics";
 import ZoomSubscriptionsTable from "./components/ZoomSubscriptionsTable";
 import ZoomPaymentsTable from "./components/ZoomPaymentsTable";
+import PendingApprovals from "./components/PendingApprovals";
+import SessionLinks from "./components/SessionLinks";
 
 export default function ZoomDashboard() {
   const searchParams = useSearchParams();
@@ -24,7 +26,14 @@ export default function ZoomDashboard() {
     // Set default tab or use tab from URL param
     if (
       tabParam &&
-      ["overview", "sessions", "subscriptions", "payments"].includes(tabParam)
+      [
+        "overview",
+        "sessions",
+        "subscriptions",
+        "payments",
+        "links",
+        "pending",
+      ].includes(tabParam)
     ) {
       return tabParam;
     }
@@ -40,7 +49,14 @@ export default function ZoomDashboard() {
   useEffect(() => {
     if (
       tabParam &&
-      ["overview", "sessions", "subscriptions", "payments"].includes(tabParam)
+      [
+        "overview",
+        "sessions",
+        "subscriptions",
+        "payments",
+        "links",
+        "pending",
+      ].includes(tabParam)
     ) {
       setActiveTab(tabParam);
     }
@@ -131,11 +147,13 @@ export default function ZoomDashboard() {
         value={activeTab}
         onValueChange={setActiveTab}
       >
-        <TabsList className="grid grid-cols-4 w-full max-w-md">
+        <TabsList className="grid grid-cols-6 w-full max-w-3xl">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="sessions">Sessions</TabsTrigger>
+          <TabsTrigger value="links">Session Links</TabsTrigger>
           <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
           <TabsTrigger value="payments">Payments</TabsTrigger>
+          <TabsTrigger value="pending">Approvals</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6 space-y-6">
@@ -161,12 +179,24 @@ export default function ZoomDashboard() {
           )}
         </TabsContent>
 
+        <TabsContent value="links" className="mt-6 space-y-6">
+          <div className="rounded-md border shadow-sm bg-white p-6 overflow-x-auto">
+            <SessionLinks sessions={zoomSessions} refreshData={fetchData} />
+          </div>
+        </TabsContent>
+
         <TabsContent value="subscriptions" className="mt-6 space-y-6">
           <ZoomSubscriptionsTable />
         </TabsContent>
 
         <TabsContent value="payments" className="mt-6 space-y-6">
           <ZoomPaymentsTable />
+        </TabsContent>
+
+        <TabsContent value="pending">
+          <div className="rounded-md border shadow-sm bg-white p-6 overflow-x-auto">
+            <PendingApprovals />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

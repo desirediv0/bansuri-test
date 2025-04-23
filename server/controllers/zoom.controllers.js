@@ -91,12 +91,20 @@ export const createZoomSession = asyncHandler(async (req, res) => {
     startTime,
     endTime,
     price,
+    registrationFee,
+    courseFee,
     capacity,
     recurringClass,
     thumbnailUrl,
+    hasModules,
+    isFirstModuleFree,
+    modules,
+    currentRange,
+    currentOrientation,
+    isActive,
   } = req.body;
 
-  if (!title || !startTime || !endTime || price === undefined) {
+  if (!title || !startTime || !endTime) {
     // If thumbnail was uploaded but there's an error, delete it from S3
     if (thumbnailUrl) {
       try {
@@ -119,19 +127,50 @@ export const createZoomSession = asyncHandler(async (req, res) => {
       endTime,
     });
 
+    // Initialize base data with required fields
     const zoomSessionData = {
       title,
       description,
       startTime: new Date(startTime),
       endTime: new Date(endTime),
-      price: parseFloat(price),
+      price: parseFloat(price || 0),
       userId: req.user.id,
       zoomLink: zoomData.zoomLink,
       zoomMeetingId: zoomData.zoomMeetingId,
       zoomPassword: zoomData.zoomPassword,
     };
 
+    // Conditionally add fields that might cause errors if not in the schema
     try {
+      // Try to add newer fields, but don't fail if they don't exist in schema
+      if (registrationFee !== undefined) {
+        zoomSessionData.registrationFee = parseFloat(registrationFee || 0);
+      }
+
+      if (courseFee !== undefined) {
+        zoomSessionData.courseFee = parseFloat(courseFee || 0);
+      }
+
+      if (hasModules !== undefined) {
+        zoomSessionData.hasModules = hasModules || false;
+      }
+
+      if (isFirstModuleFree !== undefined) {
+        zoomSessionData.isFirstModuleFree = isFirstModuleFree || false;
+      }
+
+      if (currentRange !== undefined) {
+        zoomSessionData.currentRange = currentRange || null;
+      }
+
+      if (currentOrientation !== undefined) {
+        zoomSessionData.currentOrientation = currentOrientation || null;
+      }
+
+      if (isActive !== undefined) {
+        zoomSessionData.isActive = isActive;
+      }
+
       if (recurringClass !== undefined) {
         zoomSessionData.recurringClass = recurringClass;
       }
@@ -150,8 +189,49 @@ export const createZoomSession = asyncHandler(async (req, res) => {
       );
     }
 
-    const zoomSession = await prisma.zoomSession.create({
-      data: zoomSessionData,
+    // Use a transaction to create the Zoom session and modules
+    const zoomSession = await prisma.$transaction(async (tx) => {
+      // Create the main zoom session
+      const session = await tx.zoomSession.create({
+        data: zoomSessionData,
+      });
+
+      // If modules are provided, create them
+      if (
+        hasModules &&
+        modules &&
+        Array.isArray(modules) &&
+        modules.length > 0
+      ) {
+        // Create each module
+        for (let i = 0; i < modules.length; i++) {
+          const module = modules[i];
+
+          // Create a separate Zoom meeting for each module
+          const moduleZoomData = await createZoomMeeting({
+            title: `${title} - ${module.title}`,
+            startTime: module.startTime,
+            endTime: module.endTime,
+          });
+
+          await tx.zoomSessionModule.create({
+            data: {
+              title: module.title,
+              description: module.description,
+              startTime: new Date(module.startTime),
+              endTime: new Date(module.endTime),
+              zoomLink: moduleZoomData.zoomLink,
+              zoomMeetingId: moduleZoomData.zoomMeetingId,
+              zoomPassword: moduleZoomData.zoomPassword,
+              position: i + 1,
+              isFree: isFirstModuleFree && i === 0, // First module is free if isFirstModuleFree is true
+              zoomSessionId: session.id,
+            },
+          });
+        }
+      }
+
+      return session;
     });
 
     return res
@@ -180,6 +260,7 @@ export const createZoomSession = asyncHandler(async (req, res) => {
 
 // Admin: Get all Zoom sessions
 export const getAllZoomSessions = asyncHandler(async (req, res) => {
+  // For admin users, return all zoom session data including sensitive fields
   const zoomSessions = await prisma.zoomSession.findMany({
     orderBy: {
       startTime: "desc",
@@ -198,6 +279,7 @@ export const getAllZoomSessions = asyncHandler(async (req, res) => {
     },
   });
 
+  // For admins, we return the full data including zoom details
   return res
     .status(200)
     .json(
@@ -344,134 +426,117 @@ export const deleteZoomSession = asyncHandler(async (req, res) => {
 
 // User: Get available Zoom sessions
 export const getUserZoomSessions = asyncHandler(async (req, res) => {
-  // First, let's check if we have any sessions at all
-  const allSessions = await prisma.zoomSession.findMany({
-    orderBy: {
-      startTime: "asc",
-    },
-  });
-
-  // Now get the filtered sessions as per the original logic
-  const zoomSessions = await prisma.zoomSession.findMany({
-    where: {
-      isActive: true,
-      startTime: {
-        gte: new Date(),
+  // If includeAll is true, get all sessions regardless of status/date
+  let zoomSessions;
+  if (req.query.includeAll === "true") {
+    zoomSessions = await prisma.zoomSession.findMany({
+      where: {
+        isActive: true,
       },
-    },
-    orderBy: {
-      startTime: "asc",
-    },
-    include: {
-      subscribedUsers: {
-        ...(req.user
-          ? {
-              where: {
-                userId: req.user.id,
-                status: "ACTIVE",
-              },
-            }
-          : {}),
+      orderBy: {
+        startTime: "desc",
       },
-      createdBy: {
-        select: {
-          name: true,
+      include: {
+        subscribedUsers: {
+          ...(req.user
+            ? {
+                where: {
+                  userId: req.user.id,
+                },
+              }
+            : {}),
         },
-      },
-    },
-  });
-
-  // Check if sessions exist but don't meet the criteria
-  if (zoomSessions.length === 0 && allSessions.length > 0) {
-    if (req.query.includeAll === "true") {
-      const allUserSessions = await prisma.zoomSession.findMany({
-        orderBy: {
-          startTime: "desc",
-        },
-        include: {
-          subscribedUsers: {
-            // Only include user-specific subscription data if user is logged in
-            ...(req.user
-              ? {
-                  where: {
-                    userId: req.user.id,
-                    status: "ACTIVE",
-                  },
-                }
-              : {}),
-          },
-          createdBy: {
-            select: {
-              name: true,
-            },
+        createdBy: {
+          select: {
+            name: true,
           },
         },
-      });
-
-      // Transform data to include subscription status and teacher name
-      const transformedSessions = allUserSessions.map((session) => ({
-        ...session,
-        isSubscribed: req.user ? session.subscribedUsers.length > 0 : false,
-        teacherName: session.createdBy?.name || "Instructor",
-        formattedDate: new Date(session.startTime).toLocaleDateString("en-US", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        }),
-        formattedTime: new Date(session.startTime).toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        duration: Math.ceil(
-          (new Date(session.endTime) - new Date(session.startTime)) /
-            (60 * 1000)
-        ),
-        createdBy: undefined,
-      }));
-
-      return res
-        .status(200)
-        .json(
-          new ApiResponsive(
-            200,
-            transformedSessions,
-            "All zoom sessions fetched (including inactive/past)"
-          )
-        );
-    }
+      },
+    });
+  } else {
+    // Get only active sessions (removed date filter)
+    zoomSessions = await prisma.zoomSession.findMany({
+      where: {
+        isActive: true,
+      },
+      orderBy: {
+        startTime: "asc",
+      },
+      include: {
+        subscribedUsers: {
+          ...(req.user
+            ? {
+                where: {
+                  userId: req.user.id,
+                },
+              }
+            : {}),
+        },
+        createdBy: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
   }
 
-  // Transform data to include subscription status and teacher name
-  const transformedSessions = zoomSessions.map((session) => ({
-    ...session,
-    isSubscribed: req.user ? session.subscribedUsers.length > 0 : false,
-    teacherName: session.createdBy?.name || "Instructor",
-    formattedDate: new Date(session.startTime).toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    }),
-    formattedTime: new Date(session.startTime).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-    duration: Math.ceil(
-      (new Date(session.endTime) - new Date(session.startTime)) / (60 * 1000)
-    ),
-    createdBy: undefined,
-  }));
+  // Process each session to add formatted data and remove sensitive information
+  const processedSessions = zoomSessions.map((session) => {
+    // Check if user has access to links
+    let isRegistered = false;
+    let hasAccessToLinks = false;
+
+    if (req.user && session.subscribedUsers?.length > 0) {
+      const subscription = session.subscribedUsers[0];
+      isRegistered = subscription.isRegistered || false;
+      hasAccessToLinks = subscription.hasAccessToLinks || false;
+    }
+
+    // Create a copy of the session data
+    const sessionData = { ...session };
+
+    // Remove sensitive zoom details unless user has access
+    if (!req.user || !hasAccessToLinks) {
+      delete sessionData.zoomLink;
+      delete sessionData.zoomMeetingId;
+      delete sessionData.zoomPassword;
+    }
+
+    // Return transformed session
+    return {
+      ...sessionData,
+      isSubscribed: req.user ? session.subscribedUsers?.length > 0 : false,
+      isRegistered,
+      hasAccessToLinks,
+      teacherName: session.createdBy?.name || "Instructor",
+      formattedDate: new Date(session.startTime).toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }),
+      formattedTime: new Date(session.startTime).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      duration: Math.ceil(
+        (new Date(session.endTime) - new Date(session.startTime)) / (60 * 1000)
+      ),
+      subscribedUsers: undefined,
+      createdBy: undefined,
+    };
+  });
+
+  // Create appropriate message based on the request type
+  const message =
+    req.query.includeAll === "true"
+      ? "All zoom sessions fetched"
+      : "Zoom sessions fetched successfully";
 
   return res
     .status(200)
-    .json(
-      new ApiResponsive(
-        200,
-        transformedSessions,
-        "Zoom sessions fetched successfully"
-      )
-    );
+    .json(new ApiResponsive(200, processedSessions, message));
 });
 
 // User: Get my subscribed Zoom sessions
@@ -631,6 +696,7 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
     razorpay_order_id,
     razorpay_signature,
     zoomSessionId,
+    moduleId,
     previousSubscriptionId,
   } = req.body;
 
@@ -655,6 +721,9 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
 
   const zoomSession = await prisma.zoomSession.findUnique({
     where: { id: zoomSessionId },
+    include: {
+      modules: { orderBy: { position: "asc" } },
+    },
   });
 
   if (!zoomSession) {
@@ -676,6 +745,29 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
     .substring(2, 8)
     .toUpperCase()}`;
 
+  // Check if this is a module-specific subscription
+  const targetModuleId =
+    moduleId ||
+    (zoomSession.hasModules && zoomSession.modules.length > 0
+      ? zoomSession.modules[0].id
+      : null);
+
+  // Check if the module is free
+  let isModuleFree = false;
+  let targetModule = null;
+
+  if (targetModuleId) {
+    targetModule = zoomSession.modules.find((m) => m.id === targetModuleId);
+    if (targetModule) {
+      isModuleFree = targetModule.isFree;
+    }
+  }
+
+  // Determine initial status based on whether approval is needed
+  // Free modules don't need approval, paid modules do
+  const initialStatus = isModuleFree ? "ACTIVE" : "PENDING_APPROVAL";
+  const initialApprovalStatus = isModuleFree;
+
   // Create subscription and payment records in transaction
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -684,6 +776,7 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
         where: {
           userId: req.user.id,
           zoomSessionId,
+          ...(targetModuleId ? { moduleId: targetModuleId } : {}),
         },
       });
 
@@ -697,7 +790,9 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
             startDate,
             endDate,
             nextPaymentDate,
-            status: "ACTIVE",
+            status: initialStatus,
+            isApproved: initialApprovalStatus,
+            moduleId: targetModuleId,
           },
         });
       } else {
@@ -709,7 +804,9 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
             startDate,
             endDate,
             nextPaymentDate,
-            status: "ACTIVE",
+            status: initialStatus,
+            isApproved: initialApprovalStatus,
+            moduleId: targetModuleId,
           },
         });
       }
@@ -717,7 +814,7 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
       // Create payment record
       const payment = await tx.zoomPayment.create({
         data: {
-          amount: zoomSession.price,
+          amount: isModuleFree ? 0 : zoomSession.price,
           razorpay_order_id,
           razorpay_payment_id,
           razorpay_signature,
@@ -728,7 +825,7 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
         },
       });
 
-      return { subscription, payment };
+      return { subscription, payment, isModuleFree };
     });
 
     // Send confirmation email
@@ -740,12 +837,13 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
           name: req.user.name,
           title: zoomSession.title,
           startDate: zoomSession.startTime,
-          meetingLink: zoomSession.zoomLink,
-          password: zoomSession.zoomPassword,
-          amount: zoomSession.price,
+          meetingLink: result.isModuleFree ? zoomSession.zoomLink : null,
+          password: result.isModuleFree ? zoomSession.zoomPassword : null,
+          amount: result.isModuleFree ? 0 : zoomSession.price,
           receiptNumber: result.payment.receiptNumber,
           paymentId: result.payment.razorpay_payment_id,
           date: new Date(),
+          needsApproval: !result.isModuleFree,
         },
         emailType: "ZOOM_SUBSCRIPTION",
       });
@@ -753,15 +851,20 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
       console.error("Error sending email:", error);
     }
 
-    return res
-      .status(200)
-      .json(
-        new ApiResponsive(
-          200,
-          result,
-          "Payment successful and subscription activated"
-        )
-      );
+    return res.status(200).json(
+      new ApiResponsive(
+        200,
+        {
+          ...result,
+          message: result.isModuleFree
+            ? "Payment successful and subscription activated"
+            : "Payment successful. Waiting for admin approval.",
+        },
+        result.isModuleFree
+          ? "Payment successful and subscription activated"
+          : "Payment successful. Waiting for admin approval."
+      )
+    );
   } catch (error) {
     console.error("Error completing payment process:", error);
 
@@ -775,6 +878,7 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
           where: {
             userId: req.user.id,
             zoomSessionId,
+            ...(targetModuleId ? { moduleId: targetModuleId } : {}),
           },
         });
 
@@ -785,13 +889,15 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
               startDate,
               endDate,
               nextPaymentDate,
-              status: "ACTIVE",
+              status: initialStatus,
+              isApproved: initialApprovalStatus,
+              moduleId: targetModuleId,
             },
           });
 
           const payment = await prisma.zoomPayment.create({
             data: {
-              amount: zoomSession.price,
+              amount: isModuleFree ? 0 : zoomSession.price,
               razorpay_order_id,
               razorpay_payment_id,
               razorpay_signature,
@@ -802,15 +908,22 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
             },
           });
 
-          return res
-            .status(200)
-            .json(
-              new ApiResponsive(
-                200,
-                { subscription: updatedSubscription, payment },
-                "Payment successful and subscription reactivated"
-              )
-            );
+          return res.status(200).json(
+            new ApiResponsive(
+              200,
+              {
+                subscription: updatedSubscription,
+                payment,
+                isModuleFree,
+                message: isModuleFree
+                  ? "Payment successful and subscription reactivated"
+                  : "Payment successful. Waiting for admin approval.",
+              },
+              isModuleFree
+                ? "Payment successful and subscription reactivated"
+                : "Payment successful. Waiting for admin approval."
+            )
+          );
         }
       } catch (secondError) {
         console.error("Error in fallback approach:", secondError);
@@ -833,16 +946,50 @@ export const cancelZoomSubscription = asyncHandler(async (req, res) => {
       id: subscriptionId,
       userId: req.user.id,
     },
+    include: {
+      zoomSession: true,
+    },
   });
 
   if (!subscription) {
     throw new ApiError(404, "Subscription not found");
   }
 
+  // Only active, pending approval, or registered subscriptions can be cancelled
+  if (
+    !["ACTIVE", "PENDING_APPROVAL", "REGISTERED"].includes(subscription.status)
+  ) {
+    throw new ApiError(
+      400,
+      "This subscription is already cancelled or expired"
+    );
+  }
+
+  // Update the subscription status to cancelled
   const updatedSubscription = await prisma.zoomSubscription.update({
     where: { id: subscriptionId },
-    data: { status: "CANCELLED" },
+    data: {
+      status: "CANCELLED",
+      isRegistered: false, // Reset registration status
+      hasAccessToLinks: false, // Remove access to links
+    },
   });
+
+  // Send cancellation email notification
+  try {
+    await SendEmail({
+      email: req.user.email,
+      subject: "Your Zoom Class Subscription Has Been Cancelled",
+      message: {
+        name: req.user.name,
+        title: subscription.zoomSession.title,
+        cancelDate: new Date().toLocaleDateString(),
+      },
+      emailType: "ZOOM_CANCELLATION",
+    });
+  } catch (error) {
+    console.error("Error sending cancellation email:", error);
+  }
 
   return res
     .status(200)
@@ -858,24 +1005,59 @@ export const cancelZoomSubscription = asyncHandler(async (req, res) => {
 // Check if user has active subscription for a Zoom session
 export const checkZoomSubscription = asyncHandler(async (req, res) => {
   const { zoomSessionId } = req.params;
+  const { moduleId } = req.query;
 
-  // First check for an active subscription
+  // Check for all possible modules in this session
+  const zoomSession = await prisma.zoomSession.findUnique({
+    where: { id: zoomSessionId },
+    include: {
+      modules: { orderBy: { position: "asc" } },
+    },
+  });
+
+  if (!zoomSession) {
+    throw new ApiError(404, "Zoom session not found");
+  }
+
+  // If moduleId is specified, check for that specific module
+  // Otherwise check for any module or main session
+  const whereClause = {
+    userId: req.user.id,
+    zoomSessionId,
+    ...(moduleId ? { moduleId } : {}),
+  };
+
+  // First check for an active and approved subscription
   const activeSubscription = await prisma.zoomSubscription.findFirst({
     where: {
-      userId: req.user.id,
-      zoomSessionId,
+      ...whereClause,
       status: "ACTIVE",
+      isApproved: true,
       endDate: {
         gte: new Date(),
       },
     },
     include: {
       zoomSession: true,
+      module: true,
     },
   });
 
-  // If there's an active subscription, return it
+  // If there's an active and approved subscription, return it
   if (activeSubscription) {
+    // Determine which link to return - module link or main session link
+    const meetingLink = activeSubscription.module
+      ? activeSubscription.module.zoomLink
+      : activeSubscription.zoomSession.zoomLink;
+
+    const meetingPassword = activeSubscription.module
+      ? activeSubscription.module.zoomPassword
+      : activeSubscription.zoomSession.zoomPassword;
+
+    const meetingId = activeSubscription.module
+      ? activeSubscription.module.zoomMeetingId
+      : activeSubscription.zoomSession.zoomMeetingId;
+
     return res.status(200).json(
       new ApiResponsive(
         200,
@@ -883,9 +1065,9 @@ export const checkZoomSubscription = asyncHandler(async (req, res) => {
           isSubscribed: true,
           subscription: activeSubscription,
           meetingDetails: {
-            link: activeSubscription.zoomSession.zoomLink,
-            password: activeSubscription.zoomSession.zoomPassword,
-            meetingId: activeSubscription.zoomSession.zoomMeetingId,
+            link: meetingLink,
+            password: meetingPassword,
+            meetingId: meetingId,
           },
         },
         "Active subscription found"
@@ -893,14 +1075,120 @@ export const checkZoomSubscription = asyncHandler(async (req, res) => {
     );
   }
 
-  // If no active subscription, check if the user has any subscription that might need reactivation
-  const inactiveSubscription = await prisma.zoomSubscription.findFirst({
+  // Check for a pending approval subscription
+  const pendingSubscription = await prisma.zoomSubscription.findFirst({
     where: {
-      userId: req.user.id,
-      zoomSessionId,
+      ...whereClause,
+      status: "PENDING_APPROVAL",
     },
     include: {
       zoomSession: true,
+      module: true,
+    },
+  });
+
+  if (pendingSubscription) {
+    return res.status(200).json(
+      new ApiResponsive(
+        200,
+        {
+          isSubscribed: false,
+          isPending: true,
+          subscription: pendingSubscription,
+        },
+        "Subscription is pending approval"
+      )
+    );
+  }
+
+  // Check for free modules
+  if (zoomSession.hasModules) {
+    const freeModules = zoomSession.modules.filter((m) => m.isFree);
+
+    if (freeModules.length > 0) {
+      // For free modules, we automatically create a subscription for the user
+      // or return existing one
+      const freeModule = freeModules[0]; // Usually the first module
+
+      // Check if already has a subscription for this free module
+      const existingFreeSubscription = await prisma.zoomSubscription.findFirst({
+        where: {
+          userId: req.user.id,
+          zoomSessionId,
+          moduleId: freeModule.id,
+        },
+        include: {
+          module: true,
+        },
+      });
+
+      if (existingFreeSubscription) {
+        return res.status(200).json(
+          new ApiResponsive(
+            200,
+            {
+              isSubscribed: true,
+              isFreeModule: true,
+              subscription: existingFreeSubscription,
+              meetingDetails: {
+                link: freeModule.zoomLink,
+                password: freeModule.zoomPassword,
+                meetingId: freeModule.zoomMeetingId,
+              },
+            },
+            "Free module subscription found"
+          )
+        );
+      } else {
+        // Create a free subscription for this user
+        const startDate = new Date();
+        const endDate = new Date();
+        endDate.setMonth(endDate.getMonth() + 1);
+        const nextPaymentDate = new Date();
+        nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+
+        const freeSubscription = await prisma.zoomSubscription.create({
+          data: {
+            userId: req.user.id,
+            zoomSessionId,
+            moduleId: freeModule.id,
+            startDate,
+            endDate,
+            nextPaymentDate,
+            status: "ACTIVE",
+            isApproved: true,
+          },
+          include: {
+            module: true,
+          },
+        });
+
+        return res.status(200).json(
+          new ApiResponsive(
+            200,
+            {
+              isSubscribed: true,
+              isFreeModule: true,
+              subscription: freeSubscription,
+              meetingDetails: {
+                link: freeModule.zoomLink,
+                password: freeModule.zoomPassword,
+                meetingId: freeModule.zoomMeetingId,
+              },
+            },
+            "Free module subscription created"
+          )
+        );
+      }
+    }
+  }
+
+  // If no active subscription, check if the user has any subscription that might need reactivation
+  const inactiveSubscription = await prisma.zoomSubscription.findFirst({
+    where: whereClause,
+    include: {
+      zoomSession: true,
+      module: true,
     },
   });
 
@@ -913,35 +1201,80 @@ export const checkZoomSubscription = asyncHandler(async (req, res) => {
     const nextPaymentDate = new Date();
     nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
 
+    // Check if the module is free (should be approved automatically)
+    let isModuleFree = false;
+    if (inactiveSubscription.moduleId) {
+      const module = zoomSession.modules.find(
+        (m) => m.id === inactiveSubscription.moduleId
+      );
+      if (module) {
+        isModuleFree = module.isFree;
+      }
+    } else {
+      // If it's the main session, check if it has a free first module
+      isModuleFree = zoomSession.isFirstModuleFree && zoomSession.hasModules;
+    }
+
     const updatedSubscription = await prisma.zoomSubscription.update({
       where: { id: inactiveSubscription.id },
       data: {
-        status: "ACTIVE",
+        status: isModuleFree ? "ACTIVE" : "PENDING_APPROVAL",
+        isApproved: isModuleFree,
         startDate,
         endDate,
         nextPaymentDate,
       },
       include: {
         zoomSession: true,
+        module: true,
       },
     });
 
-    return res.status(200).json(
-      new ApiResponsive(
-        200,
-        {
-          isSubscribed: true,
-          subscription: updatedSubscription,
-          meetingDetails: {
-            link: updatedSubscription.zoomSession.zoomLink,
-            password: updatedSubscription.zoomSession.zoomPassword,
-            meetingId: updatedSubscription.zoomSession.zoomMeetingId,
+    // Only return meeting details if it's approved (free module)
+    if (isModuleFree) {
+      // Determine which link to return - module link or main session link
+      const meetingLink = updatedSubscription.module
+        ? updatedSubscription.module.zoomLink
+        : updatedSubscription.zoomSession.zoomLink;
+
+      const meetingPassword = updatedSubscription.module
+        ? updatedSubscription.module.zoomPassword
+        : updatedSubscription.zoomSession.zoomPassword;
+
+      const meetingId = updatedSubscription.module
+        ? updatedSubscription.module.zoomMeetingId
+        : updatedSubscription.zoomSession.zoomMeetingId;
+
+      return res.status(200).json(
+        new ApiResponsive(
+          200,
+          {
+            isSubscribed: true,
+            subscription: updatedSubscription,
+            meetingDetails: {
+              link: meetingLink,
+              password: meetingPassword,
+              meetingId: meetingId,
+            },
+            reactivated: true,
           },
-          reactivated: true,
-        },
-        "Subscription reactivated"
-      )
-    );
+          "Subscription reactivated"
+        )
+      );
+    } else {
+      return res.status(200).json(
+        new ApiResponsive(
+          200,
+          {
+            isSubscribed: false,
+            isPending: true,
+            subscription: updatedSubscription,
+            reactivated: true,
+          },
+          "Subscription reactivated and pending approval"
+        )
+      );
+    }
   }
 
   // No subscription found
@@ -1378,34 +1711,52 @@ export const adminCancelZoomSubscription = asyncHandler(async (req, res) => {
 
   const subscription = await prisma.zoomSubscription.findUnique({
     where: { id },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      zoomSession: true,
+    },
   });
 
   if (!subscription) {
     throw new ApiError(404, "Subscription not found");
   }
 
+  // Only active, pending approval, or registered subscriptions can be cancelled
+  if (
+    !["ACTIVE", "PENDING_APPROVAL", "REGISTERED"].includes(subscription.status)
+  ) {
+    throw new ApiError(
+      400,
+      "This subscription is already cancelled or expired"
+    );
+  }
+
   const updatedSubscription = await prisma.zoomSubscription.update({
     where: { id },
-    data: { status: "CANCELLED" },
+    data: {
+      status: "CANCELLED",
+      isRegistered: false, // Reset registration status
+      hasAccessToLinks: false, // Remove access to links
+    },
   });
 
   // Notify user about cancellation
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: subscription.userId },
-    });
-
-    const zoomSession = await prisma.zoomSession.findUnique({
-      where: { id: subscription.zoomSessionId },
-    });
-
-    if (user && zoomSession) {
+    if (subscription.user && subscription.zoomSession) {
       await SendEmail({
-        email: user.email,
-        subject: "Your Zoom Class Subscription Has Been Cancelled",
+        email: subscription.user.email,
+        subject: "Your Zoom Class Subscription Has Been Cancelled by Admin",
         message: {
-          name: user.name,
-          title: zoomSession.title,
+          name: subscription.user.name,
+          title: subscription.zoomSession.title,
+          cancelDate: new Date().toLocaleDateString(),
+          adminCancelled: true,
         },
         emailType: "ZOOM_CANCELLATION",
       });
@@ -1438,7 +1789,9 @@ export const getZoomSession = asyncHandler(async (req, res) => {
           ? {
               where: {
                 userId: req.user.id,
-                status: "ACTIVE",
+              },
+              include: {
+                zoomSession: true,
               },
             }
           : {}),
@@ -1448,6 +1801,29 @@ export const getZoomSession = asyncHandler(async (req, res) => {
           name: true,
         },
       },
+      modules: {
+        orderBy: {
+          position: "asc",
+        },
+        // Only include sensitive module data if user is logged in
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          startTime: true,
+          endTime: true,
+          position: true,
+          isFree: true,
+          // Only include zoom details if user is authenticated and has proper access
+          ...(req.user
+            ? {
+                zoomLink: true,
+                zoomMeetingId: true,
+                zoomPassword: true,
+              }
+            : {}),
+        },
+      },
     },
   });
 
@@ -1455,10 +1831,32 @@ export const getZoomSession = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Zoom session not found");
   }
 
+  // Check if user has access to class links (paid course fee)
+  let isRegistered = false;
+  let hasAccessToLinks = false;
+
+  if (req.user && zoomSession.subscribedUsers.length > 0) {
+    const subscription = zoomSession.subscribedUsers[0];
+    isRegistered = subscription.isRegistered || false;
+    hasAccessToLinks = subscription.hasAccessToLinks || false;
+  }
+
+  // Create a copy of the session to modify safely
+  const sessionData = { ...zoomSession };
+
+  // Remove sensitive fields for unauthorized users
+  if (!req.user || !hasAccessToLinks) {
+    delete sessionData.zoomLink;
+    delete sessionData.zoomMeetingId;
+    delete sessionData.zoomPassword;
+  }
+
   // Transform data to include subscription status and teacher name
   const transformedSession = {
-    ...zoomSession,
+    ...sessionData,
     isSubscribed: req.user ? zoomSession.subscribedUsers.length > 0 : false,
+    isRegistered,
+    hasAccessToLinks,
     teacherName: zoomSession.createdBy?.name || "Instructor",
     formattedDate: new Date(zoomSession.startTime).toLocaleDateString("en-US", {
       weekday: "long",
@@ -1485,6 +1883,822 @@ export const getZoomSession = asyncHandler(async (req, res) => {
         200,
         transformedSession,
         "Zoom session fetched successfully"
+      )
+    );
+});
+
+// User: Check payment status for a zoom session
+export const checkZoomPaymentStatus = asyncHandler(async (req, res) => {
+  const { zoomSessionId } = req.params;
+
+  // Verify that the session exists
+  const zoomSession = await prisma.zoomSession.findUnique({
+    where: { id: zoomSessionId },
+  });
+
+  if (!zoomSession) {
+    throw new ApiError(404, "Zoom session not found");
+  }
+
+  // Check if user has registered for this session
+  const subscription = await prisma.zoomSubscription.findFirst({
+    where: {
+      userId: req.user.id,
+      zoomSessionId,
+    },
+  });
+
+  // Default response
+  const response = {
+    hasRegistered: false,
+    hasPaidCourseFee: false,
+  };
+
+  if (subscription) {
+    response.hasRegistered = subscription.isRegistered;
+    response.hasPaidCourseFee = subscription.hasAccessToLinks;
+  }
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponsive(200, response, "Payment status checked successfully")
+    );
+});
+
+// Admin: Approve subscription
+export const approveZoomSubscription = asyncHandler(async (req, res) => {
+  const { subscriptionId } = req.params;
+
+  // Find the subscription
+  const subscription = await prisma.zoomSubscription.findUnique({
+    where: { id: subscriptionId },
+    include: {
+      user: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
+      zoomSession: true,
+      module: true,
+    },
+  });
+
+  if (!subscription) {
+    throw new ApiError(404, "Subscription not found");
+  }
+
+  if (subscription.status !== "PENDING_APPROVAL") {
+    throw new ApiError(
+      400,
+      "This subscription is not in pending approval state"
+    );
+  }
+
+  // Update the subscription status
+  const updatedSubscription = await prisma.zoomSubscription.update({
+    where: { id: subscriptionId },
+    data: {
+      status: "ACTIVE",
+      isApproved: true,
+      // Note: We're not setting hasAccessToLinks to true here because
+      // this is just for approving the registration, user still needs to pay course fee
+    },
+    include: {
+      user: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
+      zoomSession: true,
+      module: true,
+    },
+  });
+
+  // Notify the user about the approval
+  try {
+    await SendEmail({
+      email: subscription.user.email,
+      subject: "Your Registration for Zoom Class Has Been Approved",
+      message: {
+        name: subscription.user.name,
+        title: subscription.zoomSession.title,
+        date: new Date(subscription.zoomSession.startTime).toLocaleDateString(),
+        time: new Date(subscription.zoomSession.startTime).toLocaleTimeString(
+          [],
+          {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          }
+        ),
+        courseFee: subscription.zoomSession.courseFee,
+        // Inform the user they need to pay the course fee to access links
+        needsCourseFee:
+          !subscription.hasAccessToLinks &&
+          subscription.zoomSession.courseFee > 0,
+      },
+      emailType: "ZOOM_APPROVAL",
+    });
+  } catch (error) {
+    console.error("Error sending approval email:", error);
+  }
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponsive(
+        200,
+        updatedSubscription,
+        "Subscription approved successfully"
+      )
+    );
+});
+
+// Admin: Reject a zoom subscription
+export const rejectZoomSubscription = asyncHandler(async (req, res) => {
+  const { subscriptionId } = req.params;
+
+  // Find the subscription
+  const subscription = await prisma.zoomSubscription.findUnique({
+    where: { id: subscriptionId },
+    include: {
+      user: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
+      zoomSession: true,
+    },
+  });
+
+  if (!subscription) {
+    throw new ApiError(404, "Subscription not found");
+  }
+
+  if (subscription.status !== "PENDING_APPROVAL") {
+    throw new ApiError(
+      400,
+      "This subscription is not in pending approval state"
+    );
+  }
+
+  // Update the subscription status to REJECTED
+  const updatedSubscription = await prisma.zoomSubscription.update({
+    where: { id: subscriptionId },
+    data: {
+      status: "REJECTED",
+      isApproved: false,
+      isRegistered: false, // Reset registration status
+      hasAccessToLinks: false, // Remove access to links
+    },
+  });
+
+  // Notify the user about the rejection
+  try {
+    await SendEmail({
+      email: subscription.user.email,
+      subject: "Your Registration for Zoom Class Has Been Rejected",
+      message: {
+        name: subscription.user.name,
+        title: subscription.zoomSession.title,
+        date: new Date(subscription.zoomSession.startTime).toLocaleDateString(),
+      },
+      emailType: "ZOOM_REJECTION",
+    });
+  } catch (error) {
+    console.error("Error sending rejection email:", error);
+  }
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponsive(
+        200,
+        updatedSubscription,
+        "Subscription rejected successfully"
+      )
+    );
+});
+
+// User: Register for Zoom Session (pay registration fee)
+export const registerForZoomSession = asyncHandler(async (req, res) => {
+  const { zoomSessionId } = req.body;
+
+  const zoomSession = await prisma.zoomSession.findUnique({
+    where: { id: zoomSessionId },
+  });
+
+  if (!zoomSession) {
+    throw new ApiError(404, "Zoom session not found");
+  }
+
+  if (!zoomSession.isActive) {
+    throw new ApiError(400, "This Zoom session is not active");
+  }
+
+  // Validate that the registration fee is set
+  if (zoomSession.registrationFee <= 0) {
+    throw new ApiError(400, "Invalid registration fee");
+  }
+
+  // Check if user already has an active registration
+  const existingActiveRegistration = await prisma.zoomSubscription.findFirst({
+    where: {
+      userId: req.user.id,
+      zoomSessionId,
+      isRegistered: true,
+      status: {
+        in: ["ACTIVE", "PENDING_APPROVAL"],
+      },
+    },
+  });
+
+  if (existingActiveRegistration) {
+    // Return success instead of throwing an error
+    return res.status(200).json(
+      new ApiResponsive(
+        200,
+        {
+          alreadyRegistered: true,
+          subscription: existingActiveRegistration,
+        },
+        "You are already registered for this session"
+      )
+    );
+  }
+
+  // Check if user had a subscription but cancelled it
+  const cancelledSubscription = await prisma.zoomSubscription.findFirst({
+    where: {
+      userId: req.user.id,
+      zoomSessionId,
+      status: "CANCELLED",
+    },
+  });
+
+  // If there's a cancelled subscription, we'll update it when payment completes
+  // For now, proceed with creating a new order
+
+  const timestamp = Date.now().toString().slice(-8);
+  const shortSessionId = zoomSessionId.slice(0, 8);
+  const shortUserId = req.user.id.slice(0, 8);
+  const receipt = `zoom_reg_${shortSessionId}_${shortUserId}_${timestamp}`;
+
+  // Create Razorpay order
+  const options = {
+    amount: Math.round(zoomSession.registrationFee * 100),
+    currency: "INR",
+    receipt: receipt,
+    notes: {
+      userId: req.user.id,
+      zoomSessionId,
+      paymentType: "REGISTRATION",
+      previousSubscriptionId: cancelledSubscription
+        ? cancelledSubscription.id
+        : null,
+    },
+  };
+
+  const order = await razorpay.orders.create(options);
+
+  return res.status(200).json(
+    new ApiResponsive(
+      200,
+      {
+        order,
+        zoomSession,
+        isRegistration: true,
+        isReactivation: cancelledSubscription ? true : false,
+      },
+      cancelledSubscription
+        ? "Registration order created to reactivate your subscription"
+        : "Registration order created successfully"
+    )
+  );
+});
+
+// User: Verify registration payment
+export const verifyRegistrationPayment = asyncHandler(async (req, res) => {
+  const {
+    razorpay_payment_id,
+    razorpay_order_id,
+    razorpay_signature,
+    zoomSessionId,
+  } = req.body;
+
+  if (
+    !razorpay_payment_id ||
+    !razorpay_order_id ||
+    !razorpay_signature ||
+    !zoomSessionId
+  ) {
+    throw new ApiError(400, "All fields are required");
+  }
+
+  // Verify signature
+  const generatedSignature = crypto
+    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+    .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+    .digest("hex");
+
+  if (generatedSignature !== razorpay_signature) {
+    throw new ApiError(400, "Invalid payment signature");
+  }
+
+  // Get order details from Razorpay to check if this was a reactivation
+  const order = await razorpay.orders.fetch(razorpay_order_id);
+  const previousSubscriptionId = order.notes?.previousSubscriptionId || null;
+
+  const zoomSession = await prisma.zoomSession.findUnique({
+    where: { id: zoomSessionId },
+  });
+
+  if (!zoomSession) {
+    throw new ApiError(404, "Zoom session not found");
+  }
+
+  // Calculate subscription end date (1 month from now)
+  const startDate = new Date();
+  const endDate = new Date();
+  endDate.setMonth(endDate.getMonth() + 1);
+
+  // Next payment date (1 month from now)
+  const nextPaymentDate = new Date();
+  nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+
+  // Generate receipt number
+  const receiptNumber = `ZM-REG-${Math.random()
+    .toString(36)
+    .substring(2, 8)
+    .toUpperCase()}`;
+
+  // Create subscription and payment records in transaction
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      let subscription;
+
+      // If we have a previous subscription ID, update that one
+      if (previousSubscriptionId) {
+        subscription = await tx.zoomSubscription.update({
+          where: { id: previousSubscriptionId },
+          data: {
+            startDate,
+            endDate,
+            nextPaymentDate,
+            status: "PENDING_APPROVAL", // Reactivated subscriptions need approval
+            isRegistered: true,
+            hasAccessToLinks: false, // Reset access until course fee is paid
+            registrationPaymentId: razorpay_payment_id,
+          },
+        });
+      } else {
+        // Check if user already has any subscription (active or not)
+        const existingSubscription = await tx.zoomSubscription.findFirst({
+          where: {
+            userId: req.user.id,
+            zoomSessionId,
+          },
+        });
+
+        if (existingSubscription) {
+          // Update existing subscription
+          subscription = await tx.zoomSubscription.update({
+            where: { id: existingSubscription.id },
+            data: {
+              startDate,
+              endDate,
+              nextPaymentDate,
+              status: "PENDING_APPROVAL",
+              isRegistered: true,
+              hasAccessToLinks: false,
+              registrationPaymentId: razorpay_payment_id,
+            },
+          });
+        } else {
+          // Create new subscription
+          subscription = await tx.zoomSubscription.create({
+            data: {
+              userId: req.user.id,
+              zoomSessionId,
+              startDate,
+              endDate,
+              nextPaymentDate,
+              status: "PENDING_APPROVAL",
+              isRegistered: true,
+              hasAccessToLinks: false,
+              registrationPaymentId: razorpay_payment_id,
+            },
+          });
+        }
+      }
+
+      // Create payment record
+      const payment = await tx.zoomPayment.create({
+        data: {
+          amount: zoomSession.registrationFee,
+          razorpay_order_id,
+          razorpay_payment_id,
+          razorpay_signature,
+          receiptNumber,
+          status: "COMPLETED",
+          paymentType: "REGISTRATION",
+          userId: req.user.id,
+          subscriptionId: subscription.id,
+        },
+      });
+
+      return { subscription, payment };
+    });
+
+    // Send confirmation email
+    try {
+      await SendEmail({
+        email: req.user.email,
+        subject: "Registration Confirmed for Zoom Class",
+        message: {
+          name: req.user.name,
+          title: zoomSession.title,
+          startDate: zoomSession.startTime,
+          amount: zoomSession.registrationFee,
+          receiptNumber: result.payment.receiptNumber,
+          paymentId: result.payment.razorpay_payment_id,
+          date: new Date(),
+        },
+        emailType: "ZOOM_REGISTRATION",
+      });
+    } catch (error) {
+      console.error("Error sending email:", error);
+    }
+
+    return res
+      .status(200)
+      .json(
+        new ApiResponsive(
+          200,
+          result,
+          "Registration payment successful. Your registration is pending approval."
+        )
+      );
+  } catch (error) {
+    throw new ApiError(500, error.message || "Payment processing failed");
+  }
+});
+
+// User: Pay for course access (pay course fee)
+export const payCourseAccess = asyncHandler(async (req, res) => {
+  const { zoomSessionId } = req.body;
+
+  // Check if user is registered first
+  const existingSubscription = await prisma.zoomSubscription.findFirst({
+    where: {
+      userId: req.user.id,
+      zoomSessionId,
+      isRegistered: true,
+    },
+  });
+
+  if (!existingSubscription) {
+    throw new ApiError(400, "You must register for this session first");
+  }
+
+  // Check if user already has access to links
+  if (existingSubscription.hasAccessToLinks) {
+    return res.status(200).json(
+      new ApiResponsive(
+        200,
+        {
+          alreadyHasAccess: true,
+          subscription: existingSubscription,
+        },
+        "You already have access to this session"
+      )
+    );
+  }
+
+  const zoomSession = await prisma.zoomSession.findUnique({
+    where: { id: zoomSessionId },
+  });
+
+  if (!zoomSession) {
+    throw new ApiError(404, "Zoom session not found");
+  }
+
+  // Validate that the course fee is set
+  if (zoomSession.courseFee <= 0) {
+    throw new ApiError(400, "Invalid course fee");
+  }
+
+  const timestamp = Date.now().toString().slice(-8);
+  const shortSessionId = zoomSessionId.slice(0, 8);
+  const shortUserId = req.user.id.slice(0, 8);
+  const receipt = `zoom_access_${shortSessionId}_${shortUserId}_${timestamp}`;
+
+  // Create Razorpay order
+  const options = {
+    amount: Math.round(zoomSession.courseFee * 100),
+    currency: "INR",
+    receipt: receipt,
+    notes: {
+      userId: req.user.id,
+      zoomSessionId,
+      paymentType: "COURSE_ACCESS",
+      subscriptionId: existingSubscription.id,
+    },
+  };
+
+  const order = await razorpay.orders.create(options);
+
+  return res.status(200).json(
+    new ApiResponsive(
+      200,
+      {
+        order,
+        zoomSession,
+        isCourseAccess: true,
+      },
+      "Course access order created successfully"
+    )
+  );
+});
+
+// User: Verify course access payment
+export const verifyCourseAccessPayment = asyncHandler(async (req, res) => {
+  const {
+    razorpay_payment_id,
+    razorpay_order_id,
+    razorpay_signature,
+    zoomSessionId,
+  } = req.body;
+
+  if (
+    !razorpay_payment_id ||
+    !razorpay_order_id ||
+    !razorpay_signature ||
+    !zoomSessionId
+  ) {
+    throw new ApiError(400, "All fields are required");
+  }
+
+  // Verify signature
+  const generatedSignature = crypto
+    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+    .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+    .digest("hex");
+
+  if (generatedSignature !== razorpay_signature) {
+    throw new ApiError(400, "Invalid payment signature");
+  }
+
+  // Check if user is registered first
+  const existingSubscription = await prisma.zoomSubscription.findFirst({
+    where: {
+      userId: req.user.id,
+      zoomSessionId,
+      isRegistered: true,
+    },
+  });
+
+  if (!existingSubscription) {
+    throw new ApiError(400, "You must register for this session first");
+  }
+
+  const zoomSession = await prisma.zoomSession.findUnique({
+    where: { id: zoomSessionId },
+    include: {
+      modules: true,
+    },
+  });
+
+  if (!zoomSession) {
+    throw new ApiError(404, "Zoom session not found");
+  }
+
+  // Generate receipt number
+  const receiptNumber = `ZM-ACCESS-${Math.random()
+    .toString(36)
+    .substring(2, 8)
+    .toUpperCase()}`;
+
+  // Update subscription and create payment records in transaction
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // Update subscription to provide access
+      const updatedSubscription = await tx.zoomSubscription.update({
+        where: { id: existingSubscription.id },
+        data: {
+          status: "ACTIVE", // Ensure the status is active
+          isApproved: true, // Ensure it's approved
+          hasAccessToLinks: true, // Grant access to links
+        },
+      });
+
+      // Create payment record
+      const payment = await tx.zoomPayment.create({
+        data: {
+          amount: zoomSession.courseFee,
+          razorpay_order_id,
+          razorpay_payment_id,
+          razorpay_signature,
+          receiptNumber,
+          status: "COMPLETED",
+          paymentType: "COURSE_ACCESS",
+          userId: req.user.id,
+          subscriptionId: updatedSubscription.id,
+        },
+      });
+
+      return { subscription: updatedSubscription, payment };
+    });
+
+    // Send confirmation email with the Zoom link details
+    try {
+      await SendEmail({
+        email: req.user.email,
+        subject: "Course Access Confirmed for Zoom Class",
+        message: {
+          name: req.user.name,
+          title: zoomSession.title,
+          startDate: new Date(zoomSession.startTime).toLocaleDateString(),
+          startTime: new Date(zoomSession.startTime).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          }),
+          meetingLink: zoomSession.zoomLink,
+          meetingId: zoomSession.zoomMeetingId,
+          password: zoomSession.zoomPassword,
+          amount: zoomSession.courseFee,
+          receiptNumber: result.payment.receiptNumber,
+          paymentId: result.payment.razorpay_payment_id,
+          date: new Date(),
+        },
+        emailType: "ZOOM_ACCESS",
+      });
+    } catch (error) {
+      console.error("Error sending email:", error);
+    }
+
+    return res
+      .status(200)
+      .json(
+        new ApiResponsive(
+          200,
+          result,
+          "Course access payment successful. You can now access the class."
+        )
+      );
+  } catch (error) {
+    console.error("Error completing course access payment:", error);
+    throw new ApiError(
+      500,
+      error.message || "Payment processing failed. Please contact support."
+    );
+  }
+});
+
+// Admin: Activate session links
+export const activateSessionLinks = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+
+  const zoomSession = await prisma.zoomSession.findUnique({
+    where: { id: sessionId },
+    include: {
+      subscribedUsers: {
+        where: {
+          isRegistered: true,
+        },
+        include: {
+          user: {
+            select: {
+              email: true,
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!zoomSession) {
+    throw new ApiError(404, "Zoom session not found");
+  }
+
+  // Create a new Zoom meeting if it doesn't exist
+  if (!zoomSession.zoomMeetingId || !zoomSession.zoomLink) {
+    const zoomData = await createZoomMeeting({
+      title: zoomSession.title,
+      startTime: zoomSession.startTime,
+      endTime: zoomSession.endTime,
+    });
+
+    await prisma.zoomSession.update({
+      where: { id: sessionId },
+      data: {
+        zoomMeetingId: zoomData.zoomMeetingId,
+        zoomLink: zoomData.zoomLink,
+        zoomPassword: zoomData.zoomPassword,
+      },
+    });
+  }
+
+  // Get the updated session with Zoom details
+  const updatedSession = await prisma.zoomSession.findUnique({
+    where: { id: sessionId },
+  });
+
+  // Send notification emails to all registered users
+  const notificationPromises = zoomSession.subscribedUsers.map(
+    async (subscription) => {
+      try {
+        await SendEmail({
+          email: subscription.user.email,
+          subject: "Zoom Links Now Available for Your Class",
+          message: {
+            name: subscription.user.name,
+            title: zoomSession.title,
+            startDate: zoomSession.startTime,
+            meetingLink: updatedSession.zoomLink,
+            password: updatedSession.zoomPassword,
+            meetingId: updatedSession.zoomMeetingId,
+          },
+          emailType: "ZOOM_LINKS_AVAILABLE",
+        });
+        return { userId: subscription.userId, status: "sent" };
+      } catch (error) {
+        return { userId: subscription.userId, status: "failed" };
+      }
+    }
+  );
+
+  // Wait for all notifications to be processed
+  const notificationResults = await Promise.all(notificationPromises);
+
+  return res.status(200).json(
+    new ApiResponsive(
+      200,
+      {
+        session: updatedSession,
+        notificationsCount: notificationResults.length,
+        notificationResults,
+      },
+      "Session links activated and notifications sent"
+    )
+  );
+});
+
+// Admin: Get pending approvals
+export const getPendingApprovals = asyncHandler(async (req, res) => {
+  // Get all subscriptions waiting for approval
+  const pendingSubscriptions = await prisma.zoomSubscription.findMany({
+    where: {
+      status: "PENDING_APPROVAL",
+      isRegistered: true, // Only get subscriptions where registration is paid
+      registrationPaymentId: {
+        not: null,
+      }, // Only include subscriptions that have a payment ID
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      zoomSession: {
+        select: {
+          id: true,
+          title: true,
+          currentRange: true,
+          currentOrientation: true,
+          registrationFee: true,
+          courseFee: true,
+          startTime: true,
+        },
+      },
+      payments: {
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 1,
+      },
+    },
+  });
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponsive(
+        200,
+        pendingSubscriptions,
+        "Pending approval subscriptions fetched successfully"
       )
     );
 });
