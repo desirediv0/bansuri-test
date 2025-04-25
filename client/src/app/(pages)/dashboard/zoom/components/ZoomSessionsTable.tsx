@@ -41,34 +41,34 @@ interface Module {
   isFree: boolean;
 }
 
-interface ZoomSession {
+interface ZoomLiveClass {
   id: string;
   title: string;
   description?: string;
   startTime: string;
-  endTime: string;
   price: number;
   registrationFee: number;
   courseFee: number;
   isActive: boolean;
   hasModules: boolean;
   isFirstModuleFree: boolean;
-  currentRange?: string;
+  currentRaga?: string;
   currentOrientation?: string;
   thumbnailUrl?: string | null;
-  subscribedUsers?: User[];
+  subscriptions?: User[];
   modules?: Module[];
+  slug: string;
 }
 
-interface ZoomSessionsTableProps {
-  sessions: ZoomSession[];
+interface ZoomLiveClassTableProps {
+  classes: ZoomLiveClass[];
   refreshData: () => void;
 }
 
 export default function ZoomSessionsTable({
-  sessions,
+  classes,
   refreshData,
-}: ZoomSessionsTableProps) {
+}: ZoomLiveClassTableProps) {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [expandedSessions, setExpandedSessions] = useState<{
     [key: string]: boolean;
@@ -79,11 +79,11 @@ export default function ZoomSessionsTable({
     return new Date(dateString).toLocaleString();
   };
 
-  const handleSendReminders = async (sessionId: string): Promise<void> => {
+  const handleSendReminders = async (classId: string): Promise<void> => {
     setIsLoading(true);
     try {
       await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/session/${sessionId}/send-reminders`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/class/${classId}/send-reminders`,
         {},
         { withCredentials: true }
       );
@@ -103,10 +103,10 @@ export default function ZoomSessionsTable({
     }
   };
 
-  const toggleExpand = (sessionId: string) => {
+  const toggleExpand = (classId: string) => {
     setExpandedSessions((prev) => ({
       ...prev,
-      [sessionId]: !prev[sessionId],
+      [classId]: !prev[classId],
     }));
   };
 
@@ -118,7 +118,6 @@ export default function ZoomSessionsTable({
           <TableHead>Thumbnail</TableHead>
           <TableHead>Title</TableHead>
           <TableHead>Start Time</TableHead>
-          <TableHead>End Time</TableHead>
           <TableHead>Reg. Fee</TableHead>
           <TableHead>Course Fee</TableHead>
           <TableHead>Status</TableHead>
@@ -128,18 +127,18 @@ export default function ZoomSessionsTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {sessions.map((session) => (
+        {classes.map((liveClass) => (
           <>
-            <TableRow key={session.id}>
+            <TableRow key={liveClass.id}>
               <TableCell>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => toggleExpand(session.id)}
-                  disabled={!session.hasModules || !session.modules?.length}
-                  className={!session.hasModules ? "opacity-0" : ""}
+                  onClick={() => toggleExpand(liveClass.id)}
+                  disabled={!liveClass.hasModules || !liveClass.modules?.length}
+                  className={!liveClass.hasModules ? "opacity-0" : ""}
                 >
-                  {expandedSessions[session.id] ? (
+                  {expandedSessions[liveClass.id] ? (
                     <ChevronUp size={16} />
                   ) : (
                     <ChevronDown size={16} />
@@ -147,11 +146,11 @@ export default function ZoomSessionsTable({
                 </Button>
               </TableCell>
               <TableCell>
-                {session.thumbnailUrl ? (
+                {liveClass.thumbnailUrl ? (
                   <div className="relative w-12 h-12 rounded-md overflow-hidden">
                     <Image
-                      src={session.thumbnailUrl}
-                      alt={session.title}
+                      src={liveClass.thumbnailUrl}
+                      alt={liveClass.title}
                       fill
                       style={{ objectFit: "cover" }}
                     />
@@ -163,12 +162,12 @@ export default function ZoomSessionsTable({
                 )}
               </TableCell>
               <TableCell>
-                {session.title}
-                {session.hasModules && (
+                {liveClass.title}
+                {liveClass.hasModules && (
                   <div className="text-xs text-muted-foreground flex items-center mt-1">
                     <Layers size={12} className="mr-1" />
-                    {session.modules?.length || 0} modules
-                    {session.isFirstModuleFree && (
+                    {liveClass.modules?.length || 0} modules
+                    {liveClass.isFirstModuleFree && (
                       <Badge
                         variant="outline"
                         className="ml-2 bg-green-50 text-green-700 text-[10px] py-0 px-1"
@@ -179,35 +178,34 @@ export default function ZoomSessionsTable({
                   </div>
                 )}
               </TableCell>
-              <TableCell>{formatDate(session.startTime)}</TableCell>
-              <TableCell>{formatDate(session.endTime)}</TableCell>
-              <TableCell>₹{session.registrationFee}</TableCell>
-              <TableCell>₹{session.courseFee}</TableCell>
+              <TableCell>{formatDate(liveClass.startTime)}</TableCell>
+              <TableCell>₹{liveClass.registrationFee}</TableCell>
+              <TableCell>₹{liveClass.courseFee}</TableCell>
               <TableCell>
                 <span
                   className={`px-2 py-1 rounded text-sm ${
-                    session.isActive
+                    liveClass.isActive
                       ? "bg-green-100 text-green-800"
                       : "bg-red-100 text-red-800"
                   }`}
                 >
-                  {session.isActive ? "Active" : "Inactive"}
+                  {liveClass.isActive ? "Active" : "Inactive"}
                 </span>
               </TableCell>
-              <TableCell>{session.subscribedUsers?.length || 0}</TableCell>
-              <TableCell>{session.modules?.length || 0}</TableCell>
+              <TableCell>{liveClass.subscriptions?.length || 0}</TableCell>
+              <TableCell>{liveClass.modules?.length || 0}</TableCell>
               <TableCell className="flex space-x-2">
-                <Link href={`/dashboard/zoom/edit/${session.id}`}>
+                <Link href={`/dashboard/zoom/edit/${liveClass.id}`}>
                   <Button variant="outline" size="sm" title="Edit Live Class">
                     <Edit size={16} />
                   </Button>
                 </Link>
-                <Link href={`/dashboard/zoom/delete/${session.id}`}>
+                <Link href={`/dashboard/zoom/delete/${liveClass.id}`}>
                   <Button variant="outline" size="sm" title="Delete Live Class">
                     <Trash2 size={16} />
                   </Button>
                 </Link>
-                <Link href={`/dashboard/zoom/attendees/${session.id}`}>
+                <Link href={`/dashboard/zoom/attendees/${liveClass.id}`}>
                   <Button variant="outline" size="sm" title="View Attendees">
                     <Users size={16} />
                   </Button>
@@ -215,7 +213,7 @@ export default function ZoomSessionsTable({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleSendReminders(session.id)}
+                  onClick={() => handleSendReminders(liveClass.id)}
                   disabled={isLoading}
                   title="Send Reminders"
                 >
@@ -224,15 +222,15 @@ export default function ZoomSessionsTable({
               </TableCell>
             </TableRow>
             {/* Expanded modules row */}
-            {expandedSessions[session.id] &&
-              session.hasModules &&
-              session.modules && (
+            {expandedSessions[liveClass.id] &&
+              liveClass.hasModules &&
+              liveClass.modules && (
                 <TableRow className="bg-gray-50">
                   <TableCell colSpan={10} className="p-0">
                     <div className="p-4">
                       <h4 className="text-sm font-semibold mb-2">Modules</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {session.modules.map((module, index) => (
+                        {liveClass.modules.map((module, index) => (
                           <div
                             key={module.id}
                             className="border rounded p-3 bg-white"
@@ -260,10 +258,10 @@ export default function ZoomSessionsTable({
               )}
           </>
         ))}
-        {sessions.length === 0 && (
+        {classes.length === 0 && (
           <TableRow>
             <TableCell colSpan={10} className="text-center py-8">
-              No sessions found
+              No zoom live classes found
             </TableCell>
           </TableRow>
         )}

@@ -20,7 +20,7 @@ import certificateRoutes from "./routes/certificate.routes.js";
 import visibilityRoutes from "./routes/visibility.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import contactRoutes from "./routes/contactRoutes.js";
-import zoomRoutes from "./routes/zoom.routes.js";
+import zoomLiveClassRoutes from "./routes/zoomLiveClass.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 
 const app = express();
@@ -34,7 +34,7 @@ app.use(cookieParser());
 // CORS Configuration
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN.split(','),
+    origin: process.env.CORS_ORIGIN.split(","),
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allowedHeaders: [
@@ -72,7 +72,7 @@ let razorpay;
 try {
   razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
   });
 
   console.log("Razorpay Initialized Successfully:");
@@ -99,9 +99,9 @@ app.use("/api/v1/category", categoryRouter);
 app.use("/api/v1/fees", feeRoutes);
 app.use("/api/v1/certificates", certificateRoutes);
 app.use("/api/v1/visibility", visibilityRoutes);
-app.use('/api/v1/admin', adminRoutes);
+app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/contact", contactRoutes);
-app.use("/api/v1/zoom", zoomRoutes);
+app.use("/api/v1/zoom-live-class", zoomLiveClassRoutes);
 app.use("/api/v1/upload", uploadRoutes);
 
 // Error Handling Middleware

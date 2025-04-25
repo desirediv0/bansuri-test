@@ -26,29 +26,27 @@ interface FormData {
   title: string;
   description: string;
   startTime: string;
-  endTime: string;
-  price: string;
   thumbnailUrl: string;
   registrationFee: string;
   courseFee: string;
-  currentRange: string;
+  currentRaga: string;
   currentOrientation: string;
+  sessionDescription: string;
   isActive: boolean;
 }
 
-export default function CreateZoomSessionPage() {
+export default function CreateZoomLiveClassPage() {
   const router = useRouter();
   const [formData, setFormData] = useState<FormData>({
     title: "",
     description: "",
     startTime: "",
-    endTime: "",
-    price: "0",
     thumbnailUrl: "",
     registrationFee: "0",
     courseFee: "0",
-    currentRange: "",
+    currentRaga: "",
     currentOrientation: "",
+    sessionDescription: "",
     isActive: true,
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -76,9 +74,9 @@ export default function CreateZoomSessionPage() {
     if (
       !formData.title ||
       !formData.startTime ||
-      !formData.endTime ||
       !formData.registrationFee ||
-      !formData.courseFee
+      !formData.courseFee ||
+      !formData.thumbnailUrl
     ) {
       toast({
         title: "Validation Error",
@@ -88,55 +86,53 @@ export default function CreateZoomSessionPage() {
       return;
     }
 
-    // Check if end time is after start time
-    if (new Date(formData.endTime) <= new Date(formData.startTime)) {
-      toast({
-        title: "Invalid Time",
-        description: "End time must be after start time",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsLoading(true);
     try {
+      // Generate slug from title
+      const slug = formData.title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, "")
+        .replace(/\s+/g, "-");
+
       // Prepare payload
       const payload: any = {
         title: formData.title,
-        description: formData.description,
+        description: formData.description || "",
         startTime: formData.startTime,
-        endTime: formData.endTime,
-        price: parseFloat(formData.price),
+
         registrationFee: parseFloat(formData.registrationFee),
         courseFee: parseFloat(formData.courseFee),
-        currentRange: formData.currentRange || null,
+        currentRaga: formData.currentRaga || null,
         currentOrientation: formData.currentOrientation || null,
+        sessionDescription: formData.sessionDescription || null,
         isActive: formData.isActive,
+        thumbnailUrl: formData.thumbnailUrl,
+        slug: slug,
+        price: 0,
+        getPrice: false,
+        hasModules: false,
+        isFirstModuleFree: false,
+        recurringClass: false,
       };
 
-      // Include thumbnailUrl if it has a value
-      if (formData.thumbnailUrl) {
-        payload.thumbnailUrl = formData.thumbnailUrl;
-      }
-
-      await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/session`,
+      // Create zoom live class
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/class`,
         payload,
         { withCredentials: true }
       );
 
       toast({
         title: "Success",
-        description: "Live class session created successfully",
+        description: "Live class created successfully",
       });
 
       router.push("/dashboard/zoom");
     } catch (error: any) {
-      console.error("Error creating live class session:", error);
+      console.error("Error creating live class:", error);
       toast({
         title: "Error",
-        description:
-          error.response?.data?.message || "Failed to create session",
+        description: error.response?.data?.message || "Failed to create class",
         variant: "destructive",
       });
     } finally {
@@ -202,6 +198,24 @@ export default function CreateZoomSessionPage() {
                     className="resize-none"
                   />
                 </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label
+                    htmlFor="sessionDescription"
+                    className="text-sm font-medium"
+                  >
+                    Session Description
+                  </Label>
+                  <Textarea
+                    id="sessionDescription"
+                    name="sessionDescription"
+                    value={formData.sessionDescription}
+                    onChange={handleChange}
+                    placeholder="Provide additional details about the session"
+                    rows={3}
+                    className="resize-none"
+                  />
+                </div>
               </div>
 
               <Separator />
@@ -230,24 +244,6 @@ export default function CreateZoomSessionPage() {
                       />
                     </div>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="endTime" className="text-sm font-medium">
-                      End Time <span className="text-red-500">*</span>
-                    </Label>
-                    <div className="relative">
-                      <Clock className="h-4 w-4 absolute left-3 top-3 text-gray-500" />
-                      <Input
-                        id="endTime"
-                        name="endTime"
-                        type="datetime-local"
-                        value={formData.endTime}
-                        onChange={handleChange}
-                        className="pl-10"
-                        required
-                      />
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -259,7 +255,7 @@ export default function CreateZoomSessionPage() {
                   <IndianRupee className="h-4 w-4 mr-2 text-blue-500" />
                   Pricing
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label
                       htmlFor="registrationFee"
@@ -311,29 +307,6 @@ export default function CreateZoomSessionPage() {
                       Fee to access class links
                     </p>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="price" className="text-sm font-medium">
-                      Monthly Price (₹)
-                    </Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-gray-500">
-                        ₹
-                      </span>
-                      <Input
-                        id="price"
-                        name="price"
-                        type="number"
-                        min="0"
-                        value={formData.price}
-                        onChange={handleChange}
-                        className="pl-7"
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      For subscription model (optional)
-                    </p>
-                  </div>
                 </div>
               </div>
 
@@ -348,20 +321,20 @@ export default function CreateZoomSessionPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label
-                      htmlFor="currentRange"
+                      htmlFor="currentRaga"
                       className="text-sm font-medium"
                     >
                       Current Raga
                     </Label>
                     <Input
-                      id="currentRange"
-                      name="currentRange"
-                      value={formData.currentRange}
+                      id="currentRaga"
+                      name="currentRaga"
+                      value={formData.currentRaga}
                       onChange={handleChange}
                       placeholder="e.g., Madhyam Saptak, Sa - Pa"
                     />
                     <p className="text-xs text-gray-500">
-                      Musical range covered in this class
+                      Musical Raga covered in this class
                     </p>
                   </div>
 
@@ -407,7 +380,10 @@ export default function CreateZoomSessionPage() {
                 <h3 className="text-base font-medium mb-4">Settings</h3>
                 <div className="flex items-center justify-between py-2">
                   <div>
-                    <Label htmlFor="isActive" className="text-sm font-medium">
+                    <Label
+                      htmlFor="isActive"
+                      className="text-sm font-medium cursor-pointer"
+                    >
                       Active Status
                     </Label>
                     <p className="text-xs text-gray-500">

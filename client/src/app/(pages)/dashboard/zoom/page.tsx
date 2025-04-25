@@ -15,27 +15,35 @@ import ZoomPaymentsTable from "./components/ZoomPaymentsTable";
 import PendingApprovals from "./components/PendingApprovals";
 import SessionLinks from "./components/SessionLinks";
 
+type TabValue =
+  | "overview"
+  | "classes"
+  | "subscriptions"
+  | "payments"
+  | "links"
+  | "approvals";
+
 export default function ZoomDashboard() {
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
 
   const [isLoading, setIsLoading] = useState(true);
-  const [zoomSessions, setZoomSessions] = useState([]);
+  const [zoomLiveClasses, setZoomLiveClasses] = useState([]);
   const [analyticsData, setAnalyticsData] = useState(null);
-  const [activeTab, setActiveTab] = useState(() => {
+  const [activeTab, setActiveTab] = useState<TabValue>(() => {
     // Set default tab or use tab from URL param
     if (
       tabParam &&
       [
         "overview",
-        "sessions",
+        "classes",
         "subscriptions",
         "payments",
         "links",
-        "pending",
+        "approvals",
       ].includes(tabParam)
     ) {
-      return tabParam;
+      return tabParam as TabValue;
     }
     return "overview";
   });
@@ -51,33 +59,33 @@ export default function ZoomDashboard() {
       tabParam &&
       [
         "overview",
-        "sessions",
+        "classes",
         "subscriptions",
         "payments",
         "links",
-        "pending",
+        "approvals",
       ].includes(tabParam)
     ) {
-      setActiveTab(tabParam);
+      setActiveTab(tabParam as TabValue);
     }
   }, [tabParam]);
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // Fetch sessions
-      const sessionsResponse = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/sessions`,
+      // Fetch live classes
+      const classesResponse = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/classes`,
         { withCredentials: true }
       );
 
       // Fetch analytics
       const analyticsResponse = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/analytics`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/analytics`,
         { withCredentials: true }
       );
 
-      setZoomSessions(sessionsResponse.data.data);
+      setZoomLiveClasses(classesResponse.data.data);
       setAnalyticsData(analyticsResponse.data.data);
     } catch (error) {
       console.error("Error fetching zoom data:", error);
@@ -94,7 +102,7 @@ export default function ZoomDashboard() {
   const handleProcessRenewals = async () => {
     try {
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/process-renewals`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/process-renewals`,
         {},
         { withCredentials: true }
       );
@@ -122,7 +130,7 @@ export default function ZoomDashboard() {
         <div className="flex gap-2">
           <Link href="/dashboard/zoom/create">
             <Button className="flex items-center gap-2">
-              <Plus size={18} /> Create Session
+              <Plus size={18} /> Create Live Class
             </Button>
           </Link>
           <Button
@@ -145,15 +153,15 @@ export default function ZoomDashboard() {
       <Tabs
         defaultValue="overview"
         value={activeTab}
-        onValueChange={setActiveTab}
+        onValueChange={(value: string) => setActiveTab(value as TabValue)}
       >
-        <TabsList className="grid grid-cols-6 w-full max-w-3xl">
+        <TabsList className="grid grid-cols-6 w-full max-w-4xl">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="sessions">Sessions</TabsTrigger>
-          <TabsTrigger value="links">Session Links</TabsTrigger>
+          <TabsTrigger value="classes">Live Classes</TabsTrigger>
+          <TabsTrigger value="links">Class Links</TabsTrigger>
           <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
           <TabsTrigger value="payments">Payments</TabsTrigger>
-          <TabsTrigger value="pending">Approvals</TabsTrigger>
+          <TabsTrigger value="approvals">Approvals</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6 space-y-6">
@@ -166,14 +174,14 @@ export default function ZoomDashboard() {
           )}
         </TabsContent>
 
-        <TabsContent value="sessions" className="mt-6 space-y-6">
+        <TabsContent value="classes" className="mt-6 space-y-6">
           {isLoading ? (
             <div className="flex justify-center items-center h-64">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : (
             <ZoomSessionsTable
-              sessions={zoomSessions}
+              classes={zoomLiveClasses}
               refreshData={fetchData}
             />
           )}
@@ -181,7 +189,7 @@ export default function ZoomDashboard() {
 
         <TabsContent value="links" className="mt-6 space-y-6">
           <div className="rounded-md border shadow-sm bg-white p-6 overflow-x-auto">
-            <SessionLinks sessions={zoomSessions} refreshData={fetchData} />
+            <SessionLinks sessions={zoomLiveClasses} refreshData={fetchData} />
           </div>
         </TabsContent>
 
@@ -193,10 +201,8 @@ export default function ZoomDashboard() {
           <ZoomPaymentsTable />
         </TabsContent>
 
-        <TabsContent value="pending">
-          <div className="rounded-md border shadow-sm bg-white p-6 overflow-x-auto">
-            <PendingApprovals />
-          </div>
+        <TabsContent value="approvals" className="mt-6 space-y-6">
+          <PendingApprovals />
         </TabsContent>
       </Tabs>
     </div>

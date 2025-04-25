@@ -49,7 +49,7 @@ export default function CancelSubscriptionPage() {
         // Since we don't have a direct endpoint to get a subscription by ID,
         // we'll fetch all subscriptions and find the one we need
         const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/subscriptions`,
+          `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/subscriptions`,
           { withCredentials: true }
         );
 
@@ -85,7 +85,7 @@ export default function CancelSubscriptionPage() {
     setIsCancelling(true);
     try {
       await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/cancel-subscription/${subscription.id}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/cancel-subscription/${subscription.id}`,
         {},
         { withCredentials: true }
       );

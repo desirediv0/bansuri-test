@@ -32,44 +32,49 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 
-interface ZoomSession {
+interface ZoomLiveClass {
   id: string;
   title: string;
   startTime: string;
-  endTime: string;
   isActive: boolean;
   zoomLink: string | null;
   zoomMeetingId: string | null;
   zoomPassword: string | null;
-  subscribedUsers?: { userId: string }[];
+  subscriptions?: { userId: string }[];
+  slug: string;
 }
 
 interface SessionLinksProps {
-  sessions: ZoomSession[];
+  sessions?: ZoomLiveClass[];
+  classes?: ZoomLiveClass[];
   refreshData: () => void;
 }
 
 export default function SessionLinks({
   sessions,
+  classes,
   refreshData,
 }: SessionLinksProps) {
   const [activating, setActivating] = useState<string | null>(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const [selectedSession, setSelectedSession] = useState<ZoomSession | null>(
+  const [selectedSession, setSelectedSession] = useState<ZoomLiveClass | null>(
     null
   );
   const [refreshing, setRefreshing] = useState(false);
   const { toast } = useToast();
 
+  // Use sessions if provided, otherwise use classes
+  const allSessions = sessions || classes || [];
+
   const formatDate = (dateString: string): string => {
     return new Date(dateString).toLocaleString();
   };
 
-  const handleActivateLinks = async (session: ZoomSession) => {
+  const handleActivateLinks = async (session: ZoomLiveClass) => {
     if (!session.isActive) {
       toast({
         title: "Error",
-        description: "Cannot activate links for inactive sessions",
+        description: "Cannot activate links for inactive classes",
         variant: "destructive",
       });
       return;
@@ -85,7 +90,7 @@ export default function SessionLinks({
     setActivating(selectedSession.id);
     try {
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/activate-session/${selectedSession.id}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/class/${selectedSession.id}/activate`,
         {},
         { withCredentials: true }
       );
@@ -97,10 +102,10 @@ export default function SessionLinks({
 
       refreshData();
     } catch (error) {
-      console.error("Error activating session links:", error);
+      console.error("Error activating class links:", error);
       toast({
         title: "Error",
-        description: "Failed to activate session links",
+        description: "Failed to activate class links",
         variant: "destructive",
       });
     } finally {
@@ -116,16 +121,17 @@ export default function SessionLinks({
   };
 
   // Filter for active sessions that are in the future
-  const activeUpcomingSessions = sessions.filter(
-    (session) => session.isActive && new Date(session.startTime) > new Date()
-  );
+  const activeUpcomingClasses =
+    allSessions.filter(
+      (session) => session.isActive && new Date(session.startTime) > new Date()
+    ) || [];
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="text-xl font-semibold flex items-center gap-2">
           <Link2 className="h-5 w-5" />
-          Session Links Management
+          Class Links Management
         </h3>
         <Button
           variant="outline"
@@ -142,7 +148,7 @@ export default function SessionLinks({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Session Title</TableHead>
+              <TableHead>Class Title</TableHead>
               <TableHead>Date & Time</TableHead>
               <TableHead>Link Status</TableHead>
               <TableHead>Registrations</TableHead>
@@ -150,8 +156,8 @@ export default function SessionLinks({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {activeUpcomingSessions.length > 0 ? (
-              activeUpcomingSessions.map((session) => (
+            {activeUpcomingClasses.length > 0 ? (
+              activeUpcomingClasses.map((session) => (
                 <TableRow key={session.id}>
                   <TableCell className="font-medium">{session.title}</TableCell>
                   <TableCell>{formatDate(session.startTime)}</TableCell>
@@ -172,7 +178,7 @@ export default function SessionLinks({
                     )}
                   </TableCell>
                   <TableCell>
-                    {session.subscribedUsers?.length || 0} users
+                    {session.subscriptions?.length || 0} users
                   </TableCell>
                   <TableCell className="space-x-2">
                     {session.zoomLink ? (
@@ -218,7 +224,7 @@ export default function SessionLinks({
             ) : (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8">
-                  No active upcoming sessions found
+                  No active upcoming classes found
                 </TableCell>
               </TableRow>
             )}
@@ -229,7 +235,7 @@ export default function SessionLinks({
       <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Activate Session Links</AlertDialogTitle>
+            <AlertDialogTitle>Activate Class Links</AlertDialogTitle>
             <AlertDialogDescription>
               This will generate Zoom meeting links for "
               {selectedSession?.title}" and notify all registered users. Are you

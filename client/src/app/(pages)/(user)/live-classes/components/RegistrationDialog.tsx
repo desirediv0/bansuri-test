@@ -64,34 +64,26 @@ export default function RegistrationDialog({
   const initiateRegistration = async () => {
     try {
       setIsLoading(true);
+      console.log("Initiating registration for class:", classData.id);
 
-      // Ensure Razorpay is loaded
-      if (typeof window.Razorpay === "undefined") {
-        toast.error(
-          "Payment gateway not loaded. Please refresh the page and try again."
-        );
-        return;
-      }
-
-      // Check if user is already registered
+      // Create registration
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/register`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/register`,
         {
-          zoomSessionId: classData.id,
+          zoomLiveClassId: classData.id,
         },
         { withCredentials: true }
       );
 
-      console.log("Registration response:", response.data);
+      console.log("Registration initiated:", response.data);
 
-      const { order, alreadyRegistered } = response.data.data;
-
-      // If user is already registered, show success and return
-      if (alreadyRegistered) {
-        toast.success("You are already registered for this class");
+      if (response.data.data.alreadyRegistered) {
+        toast.info("You are already registered for this class");
         onSuccess();
         return;
       }
+
+      const order = response.data.data.order;
 
       // Get Razorpay Key from server
       const keyResponse = await axios.get(
@@ -117,12 +109,12 @@ export default function RegistrationDialog({
 
             // Verify payment
             const verifyResponse = await axios.post(
-              `${process.env.NEXT_PUBLIC_API_URL}/zoom/verify-registration`,
+              `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/verify-registration`,
               {
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_signature: response.razorpay_signature,
-                zoomSessionId: classData.id,
+                zoomLiveClassId: classData.id,
               },
               { withCredentials: true }
             );

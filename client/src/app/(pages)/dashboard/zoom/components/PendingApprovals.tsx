@@ -57,7 +57,7 @@ export default function PendingApprovals() {
     setIsLoading(true);
     try {
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/pending-approvals`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/pending-approvals`,
         { withCredentials: true }
       );
       setPendingSubscriptions(response.data.data);
@@ -77,7 +77,7 @@ export default function PendingApprovals() {
     setProcessingId(subscriptionId);
     try {
       await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/approve-subscription/${subscriptionId}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/approve-subscription/${subscriptionId}`,
         {},
         { withCredentials: true }
       );
@@ -107,7 +107,7 @@ export default function PendingApprovals() {
     setProcessingId(subscriptionId);
     try {
       await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/reject-subscription/${subscriptionId}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/reject-subscription/${subscriptionId}`,
         {},
         { withCredentials: true }
       );
@@ -195,7 +195,7 @@ export default function PendingApprovals() {
                   <TableCell className="text-sm">
                     {subscription.zoomSession.currentRange && (
                       <div className="text-xs mb-1">
-                        <span className="font-medium">Range:</span>{" "}
+                        <span className="font-medium">Raga:</span>{" "}
                         {subscription.zoomSession.currentRange}
                       </div>
                     )}

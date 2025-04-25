@@ -41,35 +41,37 @@ export default function SessionAttendeesPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchAttendees();
-  }, [sessionId]);
+    const fetchAttendees = async () => {
+      try {
+        setIsLoading(true);
+        const response = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/class/${sessionId}/attendees`,
+          { withCredentials: true }
+        );
 
-  const fetchAttendees = async () => {
-    setIsLoading(true);
-    try {
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/session/${sessionId}/attendees`,
-        { withCredentials: true }
-      );
-      setAttendees(response.data.data.attendees);
-      setSession(response.data.data.zoomSession);
-    } catch (error) {
-      console.error("Error fetching attendees:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load attendees data. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+        setAttendees(response.data.data.attendees);
+        setSession(response.data.data.session);
+      } catch (error) {
+        console.error("Error fetching attendees:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load attendees. Please try again.",
+          variant: "destructive",
+        });
+        router.push("/dashboard/zoom");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchAttendees();
+  }, [sessionId, router, toast]);
 
   const handleSendReminders = async () => {
     setIsSending(true);
     try {
       await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/session/${sessionId}/send-reminders`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/class/${sessionId}/send-reminders`,
         {},
         { withCredentials: true }
       );

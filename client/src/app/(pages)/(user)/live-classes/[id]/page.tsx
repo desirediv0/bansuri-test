@@ -18,6 +18,8 @@ import {
   Check,
   Video,
   Copy,
+  CreditCard,
+  ChevronLeft,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -94,10 +96,10 @@ export default function ClassDetails() {
   const fetchClassDetails = async () => {
     try {
       setLoading(true);
-      console.log("Fetching class details...");
+      console.log("Fetching class details for ID:", id);
 
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/session/${id}`
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/class/${id}`
       );
 
       const classData = response.data.data;
@@ -127,14 +129,22 @@ export default function ClassDetails() {
       setClassData(classData);
 
       setApiChecksCompleted((prev) => ({ ...prev, fetchClassDetails: true }));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching class details:", error);
+      const errorMessage =
+        error.response?.status === 404
+          ? "The class you're looking for doesn't exist or has been removed."
+          : "Failed to load class details. Please try again.";
+
       toast({
         title: "Error",
-        description: "Failed to load class details. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
-      setTimeout(() => router.push("/live-classes"), 3000);
+
+      if (error.response?.status === 404) {
+        setTimeout(() => router.push("/live-classes"), 3000);
+      }
     } finally {
       setLoading(false);
     }
@@ -142,10 +152,10 @@ export default function ClassDetails() {
 
   const checkSubscriptionStatus = async () => {
     try {
-      console.log("Checking subscription status...");
+      console.log("Checking subscription status for ID:", id);
 
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/check-subscription/${id}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/check-subscription/${id}`,
         { withCredentials: true }
       );
 
@@ -188,53 +198,66 @@ export default function ClassDetails() {
       }
 
       setApiChecksCompleted((prev) => ({ ...prev, checkSubscription: true }));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error checking subscription status:", error);
+
+      // Only show toast for errors other than 404, as 404 already handled by fetchClassDetails
+      if (error.response?.status !== 404) {
+        toast({
+          title: "Note",
+          description:
+            "Could not check subscription status. This won't affect your ability to view the class.",
+        });
+      }
+
       setApiChecksCompleted((prev) => ({ ...prev, checkSubscription: true }));
     }
   };
 
   const checkPaymentStatus = async () => {
     try {
-      console.log("Checking payment status...");
+      console.log("Checking payment status for ID:", id);
 
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/check-payment-status/${id}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/check-subscription/${id}`,
         { withCredentials: true }
       );
 
-      const { hasRegistered, hasPaidCourseFee } = response.data.data;
+      if (response.data.data) {
+        const { isRegistered, hasAccessToLinks } = response.data.data;
 
-      console.log("Payment status results:", {
-        hasRegistered,
-        hasPaidCourseFee,
-      });
-
-      setIsRegistered(!!hasRegistered);
-      setHasAccessToLinks(!!hasPaidCourseFee);
-
-      setClassData((prev: any) => {
-        if (!prev) return prev;
-
-        return {
-          ...prev,
-          isRegistered: !!hasRegistered,
-          hasAccessToLinks: !!hasPaidCourseFee,
-        };
-      });
-
-      if (hasPaidCourseFee) {
-        router.push("/user-profile");
-        toast({
-          title: "Already Paid",
-          description:
-            "You've already paid for this class. View details in your profile.",
+        console.log("Payment status results:", {
+          isRegistered,
+          hasAccessToLinks,
         });
+
+        setIsRegistered(!!isRegistered);
+        setHasAccessToLinks(!!hasAccessToLinks);
+
+        setClassData((prev: any) => {
+          if (!prev) return prev;
+
+          return {
+            ...prev,
+            isRegistered: !!isRegistered,
+            hasAccessToLinks: !!hasAccessToLinks,
+          };
+        });
+
+        // Removed the redirect to user-profile to avoid interrupting the flow
+        if (hasAccessToLinks) {
+          toast({
+            title: "Access Available",
+            description: "You already have full access to this class.",
+          });
+        }
       }
 
       setApiChecksCompleted((prev) => ({ ...prev, checkPaymentStatus: true }));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error checking payment status:", error);
+
+      // Don't show a toast here to avoid duplicate error messages
       setApiChecksCompleted((prev) => ({ ...prev, checkPaymentStatus: true }));
     }
   };
@@ -257,7 +280,7 @@ export default function ClassDetails() {
       }
 
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/check-subscription/${classData.id}${queryParams}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/check-subscription/${classData.id}${queryParams}`,
         { withCredentials: true }
       );
 
@@ -277,13 +300,23 @@ export default function ClassDetails() {
           variant: "destructive",
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error checking subscription:", error);
-      toast({
-        title: "Error",
-        description: "Failed to join the class. Please try again.",
-        variant: "destructive",
-      });
+
+      if (error.response && error.response.status === 404) {
+        toast({
+          title: "Class Not Found",
+          description:
+            "This class is no longer available or may have been cancelled.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to join the class. Please try again.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsJoining(false);
     }
@@ -410,6 +443,15 @@ export default function ClassDetails() {
         }}
       />
       <div className="container mx-auto px-4 py-12">
+        <Button
+          variant="ghost"
+          onClick={() => router.push("/live-classes")}
+          className="mb-6 hover:bg-gray-100 transition-colors"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to all classes
+        </Button>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -547,28 +589,38 @@ export default function ClassDetails() {
                 </div>
               )}
 
-            {classData.currentRange && (
+            {classData.currentRaga && classData.currentRaga.trim() !== "" && (
               <div className="bg-white rounded-xl shadow-md p-6">
                 <h2 className="text-xl font-bold mb-4 text-gray-800">
                   Current Raga
                 </h2>
-                <p className="text-gray-700">
-                  {classData.currentRange ||
-                    "No current raga information available."}
-                </p>
+                <p className="text-gray-700">{classData.currentRaga}</p>
               </div>
             )}
 
-            {classData.currentOrientation && (
-              <div className="bg-white rounded-xl shadow-md p-6 mt-8">
-                <h2 className="text-xl font-bold mb-4 text-gray-800">
-                  Current Orientation
-                </h2>
-                <p className="text-gray-700 whitespace-pre-line">
-                  {classData.currentOrientation}
-                </p>
-              </div>
-            )}
+            {classData.currentOrientation &&
+              classData.currentOrientation.trim() !== "" && (
+                <div className="bg-white rounded-xl shadow-md p-6 mt-8">
+                  <h2 className="text-xl font-bold mb-4 text-gray-800">
+                    Current Orientation
+                  </h2>
+                  <p className="text-gray-700 whitespace-pre-line">
+                    {classData.currentOrientation}
+                  </p>
+                </div>
+              )}
+
+            {classData.sessionDescription &&
+              classData.sessionDescription.trim() !== "" && (
+                <div className="bg-white rounded-xl shadow-md p-6 mt-8">
+                  <h2 className="text-xl font-bold mb-4 text-gray-800">
+                    Session Description
+                  </h2>
+                  <p className="text-gray-700 whitespace-pre-line">
+                    {classData.sessionDescription}
+                  </p>
+                </div>
+              )}
           </motion.div>
 
           {/* Right Column - Class Details & CTA */}
@@ -651,66 +703,72 @@ export default function ClassDetails() {
                     <div>{classData.teacherName}</div>
                   </div>
                 </div>
-                {classData.capacity && (
-                  <div className="flex items-center text-gray-700">
-                    <Users className="mr-3 h-5 w-5 text-[#af1d33]" />
-                    <div>
-                      <div className="font-medium">Class Size</div>
-                      <div>Maximum {classData.capacity} students</div>
+                {userIsRegistered && !userHasAccess && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <div className="text-sm font-medium text-gray-500">
+                      Registration Status:
+                    </div>
+                    <div
+                      className={`mt-1 px-3 py-1.5 rounded-md text-sm font-medium inline-flex items-center ${
+                        !classData.isApproved
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-green-100 text-green-800"
+                      }`}
+                    >
+                      {!classData.isApproved
+                        ? "Pending Admin Approval"
+                        : "Approved - Ready for Payment"}
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className="space-y-3">
-                {isAuthenticated ? (
-                  <>
-                    {hasAccessToLinks || classData.hasAccessToLinks ? (
+              <div className="space-y-4">
+                {userIsRegistered && !userHasAccess ? (
+                  <div>
+                    {!classData.isApproved ? (
                       <Button
-                        className="w-full bg-green-600 hover:bg-green-700 text-white py-6 rounded-full font-semibold"
-                        onClick={() => handleJoinClass()}
-                        disabled={isJoining}
+                        disabled
+                        className="w-full bg-yellow-500 hover:bg-yellow-600"
                       >
-                        {isJoining ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Processing...
-                          </>
-                        ) : (
-                          "Join Class Now"
-                        )}
-                      </Button>
-                    ) : isRegistered || classData.isRegistered ? (
-                      <Button
-                        className="w-full bg-[#af1d33] hover:bg-[#8f1829] text-white py-6 rounded-full font-semibold"
-                        onClick={() => setShowCourseAccessDialog(true)}
-                      >
-                        <IndianRupee className="mr-2 h-5 w-5" />
-                        Pay Course Fee & Access Links
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Waiting for Admin Approval
                       </Button>
                     ) : (
                       <Button
-                        className="w-full bg-[#af1d33] hover:bg-[#8f1829] text-white py-6 rounded-full font-semibold"
-                        onClick={() => setShowRegistrationDialog(true)}
+                        onClick={() => setShowCourseAccessDialog(true)}
+                        className="w-full bg-green-600 hover:bg-green-700"
                       >
-                        <IndianRupee className="mr-2 h-5 w-5" />
-                        Register (₹{classData.registrationFee})
+                        <CreditCard className="mr-2 h-5 w-5" />
+                        Pay Course Fee
                       </Button>
                     )}
-                  </>
+                    <p className="text-sm text-gray-500 mt-2 text-center">
+                      {!classData.isApproved
+                        ? "Your registration is pending approval. You'll be able to pay the course fee after admin approval."
+                        : "Pay the course fee to get access to the class links"}
+                    </p>
+                  </div>
+                ) : userHasAccess ? (
+                  <Button
+                    onClick={() => handleJoinClass()}
+                    className="w-full bg-green-600 hover:bg-green-700"
+                  >
+                    <Video className="mr-2 h-5 w-5" />
+                    Join Class
+                  </Button>
                 ) : (
                   <Button
-                    className="w-full bg-[#af1d33] hover:bg-[#8f1829] text-white py-6 rounded-full font-semibold"
-                    onClick={() =>
-                      router.push(
-                        `/auth?redirect=${encodeURIComponent(window.location.pathname)}`
-                      )
-                    }
+                    onClick={handlePurchase}
+                    className="w-full bg-[#af1d33] hover:bg-[#8f1729]"
                   >
-                    Sign In to Register
+                    <CreditCard className="mr-2 h-5 w-5" />
+                    Register for Class
                   </Button>
                 )}
+              </div>
 
+              <div className="space-y-3">
                 <Button
                   variant="outline"
                   className="w-full border-gray-300 text-gray-700 py-6 rounded-full font-medium"

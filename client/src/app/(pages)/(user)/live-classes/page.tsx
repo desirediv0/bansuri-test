@@ -24,16 +24,32 @@ export default function LiveClasses() {
   const fetchClasses = async () => {
     try {
       setLoading(true);
-      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/zoom/sessions?includeAll=true`;
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/classes?includeAll=true`;
 
+      console.log("Fetching classes from:", apiUrl);
       const response = await axios.get(apiUrl);
 
-      setClasses(response.data.data);
-    } catch (error) {
+      const classesData = response.data.data;
+      console.log(`Received ${classesData.length} classes`);
+
+      // Validate that each class has either id or slug for navigation
+      const validatedClasses = classesData.map((classItem: any) => {
+        if (!classItem.id && !classItem.slug) {
+          console.warn("Class missing both ID and slug:", classItem.title);
+        }
+        return classItem;
+      });
+
+      setClasses(validatedClasses);
+    } catch (error: any) {
       console.error("Error fetching live classes:", error);
+      const errorMessage =
+        error.response?.data?.message ||
+        "Failed to load live classes. Please try again.";
+
       toast({
         title: "Error",
-        description: "Failed to load live classes. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

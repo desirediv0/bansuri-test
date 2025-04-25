@@ -24,14 +24,32 @@ export default function ClassCard({
   }
 
   const handleCardClick = () => {
-    // Always navigate to detail page
-    router.push(`/live-classes/${classData.id}`);
+    // Guard against missing data
+    if (!classData) {
+      console.error("ClassCard: Missing classData");
+      return;
+    }
+
+    try {
+      // Always navigate to detail page using slug if available (preferred) or ID as fallback
+      const identifier = classData.slug || classData.id;
+
+      if (!identifier) {
+        console.error(
+          "ClassCard: Missing both slug and id in classData",
+          classData
+        );
+        return;
+      }
+
+      router.push(`/live-classes/${identifier}`);
+    } catch (error) {
+      console.error("Navigation error:", error);
+    }
   };
 
   // Define a default thumbnail image
   const defaultThumbnail = "/images/default-class-thumbnail.jpg";
-
-  console.log(classData);
 
   return (
     <motion.div
@@ -44,7 +62,7 @@ export default function ClassCard({
       <Card className="w-full overflow-hidden bg-white shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-200 rounded-xl group h-full">
         <div className="relative h-56 w-full overflow-hidden">
           <Image
-            src={classData.thumbnailUrl}
+            src={classData.thumbnailUrl || defaultThumbnail}
             alt={classData.title}
             fill
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
@@ -116,6 +134,7 @@ export default function ClassCard({
         <CardContent className="space-y-3 pb-6">
           <p className="text-sm text-gray-600 line-clamp-2">
             {classData.description ||
+              classData.sessionDescription ||
               "No description available for this class."}
           </p>
           <div className="space-y-2.5 pt-3 border-t border-gray-100">
@@ -138,10 +157,10 @@ export default function ClassCard({
                 {classData.courseFee}
               </span>
             </div>
-            {classData.currentRange && (
+            {classData.currentRaga && (
               <div className="text-sm text-gray-700">
                 <span className="font-semibold">Raga:</span>{" "}
-                {classData.currentRange}
+                {classData.currentRaga}
               </div>
             )}
             {classData.currentOrientation && (

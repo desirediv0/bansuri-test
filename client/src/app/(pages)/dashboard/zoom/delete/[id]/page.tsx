@@ -30,19 +30,18 @@ export default function DeleteZoomSessionPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    const fetchSession = async () => {
+    const fetchSessionData = async () => {
       try {
         const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_URL}/zoom/session/${sessionId}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/session/${sessionId}`,
           { withCredentials: true }
         );
-
         setSession(response.data.data);
       } catch (error) {
         console.error("Error fetching session details:", error);
         toast({
           title: "Error",
-          description: "Failed to load session details. Please try again.",
+          description: "Failed to fetch session details",
           variant: "destructive",
         });
         router.push("/dashboard/zoom");
@@ -51,8 +50,8 @@ export default function DeleteZoomSessionPage() {
       }
     };
 
-    fetchSession();
-  }, [sessionId, toast, router]);
+    fetchSessionData();
+  }, [sessionId, router, toast]);
 
   const handleDelete = async () => {
     if (!session) return;
@@ -60,7 +59,7 @@ export default function DeleteZoomSessionPage() {
     setIsDeleting(true);
     try {
       await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/session/${session.id}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/class/${session.id}`,
         { withCredentials: true }
       );
 

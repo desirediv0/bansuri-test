@@ -83,7 +83,7 @@ const createZoomMeeting = async (meetingData) => {
   }
 };
 
-// Admin: Create a new Zoom session
+// Admin: Create a new Zoom class
 export const createZoomSession = asyncHandler(async (req, res) => {
   const {
     title,
@@ -111,7 +111,7 @@ export const createZoomSession = asyncHandler(async (req, res) => {
         await deleteFromS3(thumbnailUrl);
       } catch (err) {
         console.error(
-          "Error deleting thumbnail after session creation failed:",
+          "Error deleting thumbnail after class creation failed:",
           err
         );
       }
@@ -128,7 +128,7 @@ export const createZoomSession = asyncHandler(async (req, res) => {
     });
 
     // Initialize base data with required fields
-    const zoomSessionData = {
+    const zoomClassData = {
       title,
       description,
       startTime: new Date(startTime),
@@ -144,43 +144,43 @@ export const createZoomSession = asyncHandler(async (req, res) => {
     try {
       // Try to add newer fields, but don't fail if they don't exist in schema
       if (registrationFee !== undefined) {
-        zoomSessionData.registrationFee = parseFloat(registrationFee || 0);
+        zoomClassData.registrationFee = parseFloat(registrationFee || 0);
       }
 
       if (courseFee !== undefined) {
-        zoomSessionData.courseFee = parseFloat(courseFee || 0);
+        zoomClassData.courseFee = parseFloat(courseFee || 0);
       }
 
       if (hasModules !== undefined) {
-        zoomSessionData.hasModules = hasModules || false;
+        zoomClassData.hasModules = hasModules || false;
       }
 
       if (isFirstModuleFree !== undefined) {
-        zoomSessionData.isFirstModuleFree = isFirstModuleFree || false;
+        zoomClassData.isFirstModuleFree = isFirstModuleFree || false;
       }
 
       if (currentRange !== undefined) {
-        zoomSessionData.currentRange = currentRange || null;
+        zoomClassData.currentRange = currentRange || null;
       }
 
       if (currentOrientation !== undefined) {
-        zoomSessionData.currentOrientation = currentOrientation || null;
+        zoomClassData.currentOrientation = currentOrientation || null;
       }
 
       if (isActive !== undefined) {
-        zoomSessionData.isActive = isActive;
+        zoomClassData.isActive = isActive;
       }
 
       if (recurringClass !== undefined) {
-        zoomSessionData.recurringClass = recurringClass;
+        zoomClassData.recurringClass = recurringClass;
       }
 
       if (thumbnailUrl) {
-        zoomSessionData.thumbnailUrl = thumbnailUrl;
+        zoomClassData.thumbnailUrl = thumbnailUrl;
       }
 
       if (capacity !== undefined && capacity !== null) {
-        zoomSessionData.capacity = parseInt(capacity);
+        zoomClassData.capacity = parseInt(capacity);
       }
     } catch (err) {
       console.log(
@@ -189,11 +189,11 @@ export const createZoomSession = asyncHandler(async (req, res) => {
       );
     }
 
-    // Use a transaction to create the Zoom session and modules
-    const zoomSession = await prisma.$transaction(async (tx) => {
-      // Create the main zoom session
-      const session = await tx.zoomSession.create({
-        data: zoomSessionData,
+    // Use a transaction to create the Zoom class and modules
+    const zoomClass = await prisma.$transaction(async (tx) => {
+      // Create the main zoom class
+      const classData = await tx.zoomSession.create({
+        data: zoomClassData,
       });
 
       // If modules are provided, create them
@@ -225,43 +225,43 @@ export const createZoomSession = asyncHandler(async (req, res) => {
               zoomPassword: moduleZoomData.zoomPassword,
               position: i + 1,
               isFree: isFirstModuleFree && i === 0, // First module is free if isFirstModuleFree is true
-              zoomSessionId: session.id,
+              zoomSessionId: classData.id,
             },
           });
         }
       }
 
-      return session;
+      return classData;
     });
 
     return res
       .status(201)
       .json(
-        new ApiResponsive(201, zoomSession, "Zoom session created successfully")
+        new ApiResponsive(201, zoomClass, "Zoom class created successfully")
       );
   } catch (error) {
-    // If the session creation fails but thumbnail was uploaded, delete the uploaded image
+    // If the class creation fails but thumbnail was uploaded, delete the uploaded image
     if (thumbnailUrl) {
       try {
         await deleteFromS3(thumbnailUrl);
       } catch (err) {
         console.error(
-          "Error deleting thumbnail after session creation failed:",
+          "Error deleting thumbnail after class creation failed:",
           err
         );
       }
     }
     throw new ApiError(
       error.statusCode || 500,
-      error.message || "Failed to create Zoom session"
+      error.message || "Failed to create Zoom class"
     );
   }
 });
 
-// Admin: Get all Zoom sessions
+// Admin: Get all Zoom classes
 export const getAllZoomSessions = asyncHandler(async (req, res) => {
-  // For admin users, return all zoom session data including sensitive fields
-  const zoomSessions = await prisma.zoomSession.findMany({
+  // For admin users, return all zoom class data including sensitive fields
+  const zoomClasses = await prisma.zoomSession.findMany({
     orderBy: {
       startTime: "desc",
     },
@@ -283,11 +283,11 @@ export const getAllZoomSessions = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(
-      new ApiResponsive(200, zoomSessions, "Zoom sessions fetched successfully")
+      new ApiResponsive(200, zoomClasses, "Zoom classes fetched successfully")
     );
 });
 
-// Admin: Update Zoom session
+// Admin: Update Zoom class
 export const updateZoomSession = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const {
@@ -300,20 +300,20 @@ export const updateZoomSession = asyncHandler(async (req, res) => {
     thumbnailUrl,
   } = req.body;
 
-  const zoomSession = await prisma.zoomSession.findUnique({
+  const zoomClass = await prisma.zoomSession.findUnique({
     where: { id },
   });
 
-  if (!zoomSession) {
-    // If thumbnail was uploaded but session doesn't exist, delete it from S3
-    if (thumbnailUrl && thumbnailUrl !== zoomSession?.thumbnailUrl) {
+  if (!zoomClass) {
+    // If thumbnail was uploaded but class doesn't exist, delete it from S3
+    if (thumbnailUrl && thumbnailUrl !== zoomClass?.thumbnailUrl) {
       try {
         await deleteFromS3(thumbnailUrl);
       } catch (err) {
         console.error("Error deleting thumbnail after update failed:", err);
       }
     }
-    throw new ApiError(404, "Zoom session not found");
+    throw new ApiError(404, "Zoom class not found");
   }
 
   const updatedFields = {};
@@ -327,9 +327,9 @@ export const updateZoomSession = asyncHandler(async (req, res) => {
   // Handle thumbnail update
   if (thumbnailUrl !== undefined) {
     // If the thumbnail URL has changed, delete the old one from S3
-    if (zoomSession.thumbnailUrl && thumbnailUrl !== zoomSession.thumbnailUrl) {
+    if (zoomClass.thumbnailUrl && thumbnailUrl !== zoomClass.thumbnailUrl) {
       try {
-        await deleteFromS3(zoomSession.thumbnailUrl);
+        await deleteFromS3(zoomClass.thumbnailUrl);
       } catch (err) {
         console.error("Error deleting old thumbnail:", err);
       }
@@ -338,7 +338,7 @@ export const updateZoomSession = asyncHandler(async (req, res) => {
   }
 
   try {
-    const updatedSession = await prisma.zoomSession.update({
+    const updatedClass = await prisma.zoomSession.update({
       where: { id },
       data: updatedFields,
     });
@@ -346,44 +346,40 @@ export const updateZoomSession = asyncHandler(async (req, res) => {
     return res
       .status(200)
       .json(
-        new ApiResponsive(
-          200,
-          updatedSession,
-          "Zoom session updated successfully"
-        )
+        new ApiResponsive(200, updatedClass, "Zoom class updated successfully")
       );
   } catch (error) {
     // If update fails and we uploaded a new thumbnail, delete it
-    if (thumbnailUrl && thumbnailUrl !== zoomSession.thumbnailUrl) {
+    if (thumbnailUrl && thumbnailUrl !== zoomClass.thumbnailUrl) {
       try {
         await deleteFromS3(thumbnailUrl);
       } catch (err) {
         console.error("Error deleting thumbnail after update failed:", err);
       }
     }
-    throw new ApiError(500, "Failed to update Zoom session");
+    throw new ApiError(500, "Failed to update Zoom class");
   }
 });
 
-// Admin: Delete Zoom session
+// Admin: Delete Zoom class
 export const deleteZoomSession = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const zoomSession = await prisma.zoomSession.findUnique({
+  const zoomClass = await prisma.zoomSession.findUnique({
     where: { id },
     include: {
       subscribedUsers: true,
     },
   });
 
-  if (!zoomSession) {
-    throw new ApiError(404, "Zoom session not found");
+  if (!zoomClass) {
+    throw new ApiError(404, "Zoom class not found");
   }
 
-  // Delete the Zoom session and related records in a transaction
+  // Delete the Zoom class and related records in a transaction
   try {
     await prisma.$transaction(async (tx) => {
-      // 1. First, find all subscriptions for this session
+      // 1. First, find all subscriptions for this class
       const subscriptions = await tx.zoomSubscription.findMany({
         where: { zoomSessionId: id },
         select: { id: true },
@@ -411,25 +407,25 @@ export const deleteZoomSession = asyncHandler(async (req, res) => {
       });
     });
 
-    if (zoomSession.thumbnailUrl) {
-      await deleteFromS3(zoomSession.thumbnailUrl);
+    if (zoomClass.thumbnailUrl) {
+      await deleteFromS3(zoomClass.thumbnailUrl);
     }
 
     return res
       .status(200)
-      .json(new ApiResponsive(200, null, "Zoom session deleted successfully"));
+      .json(new ApiResponsive(200, null, "Zoom class deleted successfully"));
   } catch (error) {
-    console.error("Error deleting zoom session:", error);
-    throw new ApiError(500, "Failed to delete Zoom session");
+    console.error("Error deleting zoom class:", error);
+    throw new ApiError(500, "Failed to delete Zoom class");
   }
 });
 
-// User: Get available Zoom sessions
+// User: Get available Zoom classes
 export const getUserZoomSessions = asyncHandler(async (req, res) => {
-  // If includeAll is true, get all sessions regardless of status/date
-  let zoomSessions;
+  // If includeAll is true, get all classes regardless of status/date
+  let zoomClasses;
   if (req.query.includeAll === "true") {
-    zoomSessions = await prisma.zoomSession.findMany({
+    zoomClasses = await prisma.zoomSession.findMany({
       where: {
         isActive: true,
       },
@@ -454,8 +450,8 @@ export const getUserZoomSessions = asyncHandler(async (req, res) => {
       },
     });
   } else {
-    // Get only active sessions (removed date filter)
-    zoomSessions = await prisma.zoomSession.findMany({
+    // Get only active classes (removed date filter)
+    zoomClasses = await prisma.zoomSession.findMany({
       where: {
         isActive: true,
       },
@@ -481,47 +477,48 @@ export const getUserZoomSessions = asyncHandler(async (req, res) => {
     });
   }
 
-  // Process each session to add formatted data and remove sensitive information
-  const processedSessions = zoomSessions.map((session) => {
+  // Process each class to add formatted data and remove sensitive information
+  const processedClasses = zoomClasses.map((classData) => {
     // Check if user has access to links
     let isRegistered = false;
     let hasAccessToLinks = false;
 
-    if (req.user && session.subscribedUsers?.length > 0) {
-      const subscription = session.subscribedUsers[0];
+    if (req.user && classData.subscribedUsers?.length > 0) {
+      const subscription = classData.subscribedUsers[0];
       isRegistered = subscription.isRegistered || false;
       hasAccessToLinks = subscription.hasAccessToLinks || false;
     }
 
-    // Create a copy of the session data
-    const sessionData = { ...session };
+    // Create a copy of the class data
+    const classInfo = { ...classData };
 
     // Remove sensitive zoom details unless user has access
     if (!req.user || !hasAccessToLinks) {
-      delete sessionData.zoomLink;
-      delete sessionData.zoomMeetingId;
-      delete sessionData.zoomPassword;
+      delete classInfo.zoomLink;
+      delete classInfo.zoomMeetingId;
+      delete classInfo.zoomPassword;
     }
 
-    // Return transformed session
+    // Return transformed class
     return {
-      ...sessionData,
-      isSubscribed: req.user ? session.subscribedUsers?.length > 0 : false,
+      ...classInfo,
+      isSubscribed: req.user ? classData.subscribedUsers?.length > 0 : false,
       isRegistered,
       hasAccessToLinks,
-      teacherName: session.createdBy?.name || "Instructor",
-      formattedDate: new Date(session.startTime).toLocaleDateString("en-US", {
+      teacherName: classData.createdBy?.name || "Instructor",
+      formattedDate: new Date(classData.startTime).toLocaleDateString("en-US", {
         weekday: "long",
         year: "numeric",
         month: "long",
         day: "numeric",
       }),
-      formattedTime: new Date(session.startTime).toLocaleTimeString("en-US", {
+      formattedTime: new Date(classData.startTime).toLocaleTimeString("en-US", {
         hour: "2-digit",
         minute: "2-digit",
       }),
       duration: Math.ceil(
-        (new Date(session.endTime) - new Date(session.startTime)) / (60 * 1000)
+        (new Date(classData.endTime) - new Date(classData.startTime)) /
+          (60 * 1000)
       ),
       subscribedUsers: undefined,
       createdBy: undefined,
@@ -531,15 +528,15 @@ export const getUserZoomSessions = asyncHandler(async (req, res) => {
   // Create appropriate message based on the request type
   const message =
     req.query.includeAll === "true"
-      ? "All zoom sessions fetched"
-      : "Zoom sessions fetched successfully";
+      ? "All zoom classes fetched"
+      : "Zoom classes fetched successfully";
 
   return res
     .status(200)
-    .json(new ApiResponsive(200, processedSessions, message));
+    .json(new ApiResponsive(200, processedClasses, message));
 });
 
-// User: Get my subscribed Zoom sessions
+// User: Get my subscribed Zoom classes
 export const getMyZoomSubscriptions = asyncHandler(async (req, res) => {
   const subscriptions = await prisma.zoomSubscription.findMany({
     where: {
@@ -547,9 +544,8 @@ export const getMyZoomSubscriptions = asyncHandler(async (req, res) => {
       status: "ACTIVE",
     },
     include: {
-      zoomSession: {
+      zoomLiveClass: {
         include: {
-          // Fix: Use "createdBy" instead of "user" based on your schema
           createdBy: {
             select: {
               name: true,
@@ -564,9 +560,11 @@ export const getMyZoomSubscriptions = asyncHandler(async (req, res) => {
   const transformedSubscriptions = subscriptions.map((sub) => ({
     ...sub,
     zoomSession: {
-      ...sub.zoomSession,
-      teacherName: sub.zoomSession.createdBy.name,
-      formattedDate: new Date(sub.zoomSession.startTime).toLocaleDateString(
+      ...sub.zoomLiveClass,
+      id: sub.zoomLiveClass.id,
+      title: sub.zoomLiveClass.title,
+      teacherName: sub.zoomLiveClass.createdBy?.name || "Instructor",
+      formattedDate: new Date(sub.zoomLiveClass.startTime).toLocaleDateString(
         "en-US",
         {
           weekday: "long",
@@ -575,7 +573,7 @@ export const getMyZoomSubscriptions = asyncHandler(async (req, res) => {
           day: "numeric",
         }
       ),
-      formattedTime: new Date(sub.zoomSession.startTime).toLocaleTimeString(
+      formattedTime: new Date(sub.zoomLiveClass.startTime).toLocaleTimeString(
         "en-US",
         {
           hour: "2-digit",
@@ -583,12 +581,12 @@ export const getMyZoomSubscriptions = asyncHandler(async (req, res) => {
         }
       ),
       duration: Math.ceil(
-        (new Date(sub.zoomSession.endTime) -
-          new Date(sub.zoomSession.startTime)) /
+        (new Date(sub.zoomLiveClass.endTime || new Date()) -
+          new Date(sub.zoomLiveClass.startTime)) /
           (60 * 1000)
       ),
-      createdBy: undefined, // Remove the user object to avoid duplication
     },
+    zoomLiveClass: undefined, // Remove the original object to avoid duplication
   }));
 
   return res
@@ -602,20 +600,20 @@ export const getMyZoomSubscriptions = asyncHandler(async (req, res) => {
     );
 });
 
-// User: Subscribe to a Zoom session (create Razorpay order)
+// User: Subscribe to a Zoom class (create Razorpay order)
 export const createZoomSubscription = asyncHandler(async (req, res) => {
   const { zoomSessionId } = req.body;
 
-  const zoomSession = await prisma.zoomSession.findUnique({
+  const zoomClass = await prisma.zoomSession.findUnique({
     where: { id: zoomSessionId },
   });
 
-  if (!zoomSession) {
-    throw new ApiError(404, "Zoom session not found");
+  if (!zoomClass) {
+    throw new ApiError(404, "Zoom class not found");
   }
 
-  if (!zoomSession.isActive) {
-    throw new ApiError(400, "This Zoom session is not active");
+  if (!zoomClass.isActive) {
+    throw new ApiError(400, "This Zoom class is not active");
   }
 
   // Check if user already has an active subscription
@@ -634,12 +632,12 @@ export const createZoomSubscription = asyncHandler(async (req, res) => {
         200,
         {
           order: null,
-          zoomSession,
+          zoomClass,
           isRenewal: false,
           alreadySubscribed: true,
           subscription: existingActiveSubscription,
         },
-        "You are already subscribed to this session"
+        "You are already subscribed to this class"
       )
     );
   }
@@ -662,7 +660,7 @@ export const createZoomSubscription = asyncHandler(async (req, res) => {
 
   // Create Razorpay order
   const options = {
-    amount: Math.round(zoomSession.price * 100),
+    amount: Math.round(zoomClass.price * 100),
     currency: "INR",
     receipt: receipt,
     notes: {
@@ -680,7 +678,7 @@ export const createZoomSubscription = asyncHandler(async (req, res) => {
       200,
       {
         order,
-        zoomSession,
+        zoomClass,
         isRenewal: !!existingCanceledSubscription,
         previousSubscriptionId: existingCanceledSubscription?.id || null,
       },
@@ -719,15 +717,15 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Invalid payment signature");
   }
 
-  const zoomSession = await prisma.zoomSession.findUnique({
+  const zoomClass = await prisma.zoomSession.findUnique({
     where: { id: zoomSessionId },
     include: {
       modules: { orderBy: { position: "asc" } },
     },
   });
 
-  if (!zoomSession) {
-    throw new ApiError(404, "Zoom session not found");
+  if (!zoomClass) {
+    throw new ApiError(404, "Zoom class not found");
   }
 
   // Calculate subscription end date (1 month from now)
@@ -748,8 +746,8 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
   // Check if this is a module-specific subscription
   const targetModuleId =
     moduleId ||
-    (zoomSession.hasModules && zoomSession.modules.length > 0
-      ? zoomSession.modules[0].id
+    (zoomClass.hasModules && zoomClass.modules.length > 0
+      ? zoomClass.modules[0].id
       : null);
 
   // Check if the module is free
@@ -757,7 +755,7 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
   let targetModule = null;
 
   if (targetModuleId) {
-    targetModule = zoomSession.modules.find((m) => m.id === targetModuleId);
+    targetModule = zoomClass.modules.find((m) => m.id === targetModuleId);
     if (targetModule) {
       isModuleFree = targetModule.isFree;
     }
@@ -814,7 +812,7 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
       // Create payment record
       const payment = await tx.zoomPayment.create({
         data: {
-          amount: isModuleFree ? 0 : zoomSession.price,
+          amount: isModuleFree ? 0 : zoomClass.price,
           razorpay_order_id,
           razorpay_payment_id,
           razorpay_signature,
@@ -835,11 +833,11 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
         subject: "Zoom Class Subscription Confirmed",
         message: {
           name: req.user.name,
-          title: zoomSession.title,
-          startDate: zoomSession.startTime,
-          meetingLink: result.isModuleFree ? zoomSession.zoomLink : null,
-          password: result.isModuleFree ? zoomSession.zoomPassword : null,
-          amount: result.isModuleFree ? 0 : zoomSession.price,
+          title: zoomClass.title,
+          startDate: zoomClass.startTime,
+          meetingLink: result.isModuleFree ? zoomClass.zoomLink : null,
+          password: result.isModuleFree ? zoomClass.zoomPassword : null,
+          amount: result.isModuleFree ? 0 : zoomClass.price,
           receiptNumber: result.payment.receiptNumber,
           paymentId: result.payment.razorpay_payment_id,
           date: new Date(),
@@ -897,7 +895,7 @@ export const verifyZoomPayment = asyncHandler(async (req, res) => {
 
           const payment = await prisma.zoomPayment.create({
             data: {
-              amount: isModuleFree ? 0 : zoomSession.price,
+              amount: isModuleFree ? 0 : zoomClass.price,
               razorpay_order_id,
               razorpay_payment_id,
               razorpay_signature,
@@ -1002,28 +1000,28 @@ export const cancelZoomSubscription = asyncHandler(async (req, res) => {
     );
 });
 
-// Check if user has active subscription for a Zoom session
+// Check if user has active subscription for a Zoom class
 export const checkZoomSubscription = asyncHandler(async (req, res) => {
   const { zoomSessionId } = req.params;
   const { moduleId } = req.query;
 
-  // Check for all possible modules in this session
-  const zoomSession = await prisma.zoomSession.findUnique({
+  // Check for all possible modules in this class
+  const zoomClass = await prisma.zoomLiveClass.findUnique({
     where: { id: zoomSessionId },
     include: {
       modules: { orderBy: { position: "asc" } },
     },
   });
 
-  if (!zoomSession) {
-    throw new ApiError(404, "Zoom session not found");
+  if (!zoomClass) {
+    throw new ApiError(404, "Zoom class not found");
   }
 
   // If moduleId is specified, check for that specific module
-  // Otherwise check for any module or main session
+  // Otherwise check for any module or main class
   const whereClause = {
     userId: req.user.id,
-    zoomSessionId,
+    zoomLiveClassId: zoomSessionId,
     ...(moduleId ? { moduleId } : {}),
   };
 
@@ -1038,25 +1036,25 @@ export const checkZoomSubscription = asyncHandler(async (req, res) => {
       },
     },
     include: {
-      zoomSession: true,
+      zoomLiveClass: true,
       module: true,
     },
   });
 
   // If there's an active and approved subscription, return it
   if (activeSubscription) {
-    // Determine which link to return - module link or main session link
+    // Determine which link to return - module link or main class link
     const meetingLink = activeSubscription.module
       ? activeSubscription.module.zoomLink
-      : activeSubscription.zoomSession.zoomLink;
+      : activeSubscription.zoomLiveClass.zoomLink;
 
     const meetingPassword = activeSubscription.module
       ? activeSubscription.module.zoomPassword
-      : activeSubscription.zoomSession.zoomPassword;
+      : activeSubscription.zoomLiveClass.zoomPassword;
 
     const meetingId = activeSubscription.module
       ? activeSubscription.module.zoomMeetingId
-      : activeSubscription.zoomSession.zoomMeetingId;
+      : activeSubscription.zoomLiveClass.zoomMeetingId;
 
     return res.status(200).json(
       new ApiResponsive(
@@ -1082,7 +1080,7 @@ export const checkZoomSubscription = asyncHandler(async (req, res) => {
       status: "PENDING_APPROVAL",
     },
     include: {
-      zoomSession: true,
+      zoomLiveClass: true,
       module: true,
     },
   });
@@ -1102,8 +1100,8 @@ export const checkZoomSubscription = asyncHandler(async (req, res) => {
   }
 
   // Check for free modules
-  if (zoomSession.hasModules) {
-    const freeModules = zoomSession.modules.filter((m) => m.isFree);
+  if (zoomClass.hasModules) {
+    const freeModules = zoomClass.modules.filter((m) => m.isFree);
 
     if (freeModules.length > 0) {
       // For free modules, we automatically create a subscription for the user
@@ -1114,7 +1112,7 @@ export const checkZoomSubscription = asyncHandler(async (req, res) => {
       const existingFreeSubscription = await prisma.zoomSubscription.findFirst({
         where: {
           userId: req.user.id,
-          zoomSessionId,
+          zoomLiveClassId: zoomSessionId,
           moduleId: freeModule.id,
         },
         include: {
@@ -1150,7 +1148,7 @@ export const checkZoomSubscription = asyncHandler(async (req, res) => {
         const freeSubscription = await prisma.zoomSubscription.create({
           data: {
             userId: req.user.id,
-            zoomSessionId,
+            zoomLiveClassId: zoomSessionId,
             moduleId: freeModule.id,
             startDate,
             endDate,
@@ -1187,12 +1185,12 @@ export const checkZoomSubscription = asyncHandler(async (req, res) => {
   const inactiveSubscription = await prisma.zoomSubscription.findFirst({
     where: whereClause,
     include: {
-      zoomSession: true,
+      zoomLiveClass: true,
       module: true,
     },
   });
 
-  // If user has a payment history for this session, activate the subscription
+  // If user has a payment history for this class, activate the subscription
   if (inactiveSubscription) {
     // Reactivate the subscription
     const startDate = new Date();
@@ -1201,18 +1199,14 @@ export const checkZoomSubscription = asyncHandler(async (req, res) => {
     const nextPaymentDate = new Date();
     nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
 
-    // Check if the module is free (should be approved automatically)
     let isModuleFree = false;
     if (inactiveSubscription.moduleId) {
-      const module = zoomSession.modules.find(
+      const module = zoomClass.modules.find(
         (m) => m.id === inactiveSubscription.moduleId
       );
       if (module) {
         isModuleFree = module.isFree;
       }
-    } else {
-      // If it's the main session, check if it has a free first module
-      isModuleFree = zoomSession.isFirstModuleFree && zoomSession.hasModules;
     }
 
     const updatedSubscription = await prisma.zoomSubscription.update({
@@ -1225,7 +1219,7 @@ export const checkZoomSubscription = asyncHandler(async (req, res) => {
         nextPaymentDate,
       },
       include: {
-        zoomSession: true,
+        zoomLiveClass: true,
         module: true,
       },
     });
@@ -1235,15 +1229,15 @@ export const checkZoomSubscription = asyncHandler(async (req, res) => {
       // Determine which link to return - module link or main session link
       const meetingLink = updatedSubscription.module
         ? updatedSubscription.module.zoomLink
-        : updatedSubscription.zoomSession.zoomLink;
+        : updatedSubscription.zoomLiveClass.zoomLink;
 
       const meetingPassword = updatedSubscription.module
         ? updatedSubscription.module.zoomPassword
-        : updatedSubscription.zoomSession.zoomPassword;
+        : updatedSubscription.zoomLiveClass.zoomPassword;
 
       const meetingId = updatedSubscription.module
         ? updatedSubscription.module.zoomMeetingId
-        : updatedSubscription.zoomSession.zoomMeetingId;
+        : updatedSubscription.zoomLiveClass.zoomMeetingId;
 
       return res.status(200).json(
         new ApiResponsive(

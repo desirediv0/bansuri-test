@@ -137,12 +137,27 @@ const MyLiveClasses = () => {
   }, []);
 
   const fetchSubscriptions = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/my-subscriptions`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/my-subscriptions`,
         { withCredentials: true }
       );
+      console.log("Fetched subscriptions:", response.data.data);
+
+      // Check for subscriptions that should be active but aren't showing correctly
+      const potentialIssues = response.data.data.filter(
+        (sub: Subscription) =>
+          sub.status === "ACTIVE" && sub.isApproved && !sub.hasAccessToLinks
+      );
+
+      if (potentialIssues.length > 0) {
+        console.log(
+          "Found approved subscriptions without access:",
+          potentialIssues
+        );
+      }
+
       setSubscriptions(response.data.data);
     } catch (error) {
       console.error("Error fetching subscriptions:", error);
@@ -164,9 +179,12 @@ const MyLiveClasses = () => {
   };
 
   const handleCancelConfirm = async () => {
+    if (!selectedSubscription) return;
+
     try {
+      setLoading(true);
       await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/cancel-subscription/${selectedSubscription?.id}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/cancel-subscription/${selectedSubscription?.id}`,
         {},
         { withCredentials: true }
       );
@@ -183,11 +201,17 @@ const MyLiveClasses = () => {
 
   const handleJoinClass = async (zoomSessionId: string, moduleId?: string) => {
     try {
-      const queryParams = moduleId ? `?moduleId=${moduleId}` : "";
+      setLoading(true);
+      let queryParams = moduleId ? `?moduleId=${moduleId}` : "";
+
+      // Note: The server expects zoomLiveClassId as the parameter, but we're using zoomSessionId from client
+      // This is fine because the IDs are the same, just with different names in client vs server models
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/check-subscription/${zoomSessionId}${queryParams}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/check-subscription/${zoomSessionId}${queryParams}`,
         { withCredentials: true }
       );
+
+      console.log("Join class response:", response.data);
 
       if (response.data.data.isSubscribed) {
         window.open(response.data.data.meetingDetails.link, "_blank");
@@ -195,12 +219,18 @@ const MyLiveClasses = () => {
         toast.error(
           "Your subscription is still pending approval from the administrator."
         );
+      } else if (!response.data.data.isApproved) {
+        toast.error(
+          "Your subscription has not been approved yet. Please wait for admin approval."
+        );
       } else {
         toast.error("Access Denied. Your subscription may have expired.");
       }
     } catch (error) {
       console.error("Error joining class:", error);
       toast.error("Failed to join the class. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -222,55 +252,63 @@ const MyLiveClasses = () => {
         return;
       }
 
-      // Initiate payment
+      console.log(
+        "Initiating course access payment for class:",
+        subscription.zoomSession.id,
+        "subscription:",
+        subscription.id
+      );
+
+      // Create course access payment
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/pay-course-access`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/pay-course-access`,
         {
-          zoomSessionId: subscription.zoomSession.id,
+          zoomLiveClassId: subscription.zoomSession.id,
         },
         { withCredentials: true }
       );
 
-      console.log("Payment order created:", response.data);
-
-      if (!response.data.success) {
-        toast.error(response.data.message || "Failed to create payment order");
+      // If user already has access
+      if (response.data.data.alreadyHasAccess) {
+        toast.success("You already have access to this class");
+        fetchSubscriptions();
         return;
       }
 
-      // Get Razorpay Key
+      // Get Razorpay Key from server
       const keyResponse = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/payment/getpublickey`
       );
       const key = keyResponse.data.key;
-
-      console.log("Payment key received:", key);
 
       // Initialize Razorpay
       const options = {
         key: key,
         amount: response.data.data.order.amount,
         currency: response.data.data.order.currency,
-        name: "Bansuri Vidya Mandir",
+        name: "Bansuri Vidya Mandir | Indian Classical Music Institute",
         description: `Course Access for: ${subscription.zoomSession.title}`,
         order_id: response.data.data.order.id,
         image: "/logo-black.png",
         handler: async function (response: any) {
           try {
-            console.log("Payment successful, verifying:", response);
+            console.log("Payment successful, verifying with params:", {
+              zoomLiveClassId: subscription.zoomSession.id,
+            });
+
             // Verify payment
-            const verifyResult = await axios.post(
-              `${process.env.NEXT_PUBLIC_API_URL}/zoom/verify-course-access`,
+            const verifyResponse = await axios.post(
+              `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/verify-course-access`,
               {
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_signature: response.razorpay_signature,
-                zoomSessionId: subscription.zoomSession.id,
+                zoomLiveClassId: subscription.zoomSession.id,
               },
               { withCredentials: true }
             );
 
-            console.log("Payment verification result:", verifyResult.data);
+            console.log("Payment verification result:", verifyResponse.data);
             toast.success("Course access payment successful!");
             fetchSubscriptions(); // Refresh the list
           } catch (error) {
@@ -483,13 +521,20 @@ const MyLiveClasses = () => {
                     }
                     onClick={() => handlePayCourseAccess(subscription)}
                     className="w-full sm:w-auto"
+                    title={
+                      !subscription.isApproved
+                        ? "Waiting for admin approval"
+                        : "Pay course fee to access class links"
+                    }
                   >
                     {coursePaymentInProgress === subscription.id ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <CreditCard className="h-4 w-4 mr-1" />
                     )}
-                    Pay Course Fee
+                    {subscription.isApproved
+                      ? "Pay Course Fee"
+                      : "Waiting for Approval"}
                   </Button>
                 )}
 

@@ -263,7 +263,8 @@ export default function ZoomAnalytics({ analyticsData }: ZoomAnalyticsProps) {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {payment.subscription.zoomSession.title}
+                          {payment.subscription?.zoomSession?.title ??
+                            "Unknown Session"}
                         </TableCell>
                         <TableCell className="text-right">
                           ₹{payment.amount}

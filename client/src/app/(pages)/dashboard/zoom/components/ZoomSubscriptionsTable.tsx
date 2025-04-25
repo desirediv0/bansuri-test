@@ -47,7 +47,7 @@ export default function ZoomSubscriptionsTable() {
     setIsLoading(true);
     try {
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/subscriptions`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/subscriptions`,
         { withCredentials: true }
       );
       setSubscriptions(response.data.data);
@@ -99,7 +99,9 @@ export default function ZoomSubscriptionsTable() {
                     {subscription.user.email}
                   </div>
                 </TableCell>
-                <TableCell>{subscription.zoomSession.title}</TableCell>
+                <TableCell>
+                  {subscription.zoomSession?.title ?? "Unknown Session"}
+                </TableCell>
                 <TableCell>{formatDate(subscription.startDate)}</TableCell>
                 <TableCell>{formatDate(subscription.endDate)}</TableCell>
                 <TableCell>
@@ -111,8 +113,8 @@ export default function ZoomSubscriptionsTable() {
                       subscription.status === "ACTIVE"
                         ? "bg-green-100 text-green-800"
                         : subscription.status === "CANCELLED"
-                        ? "bg-amber-100 text-amber-800"
-                        : "bg-red-100 text-red-800"
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-red-100 text-red-800"
                     }`}
                   >
                     {subscription.status}

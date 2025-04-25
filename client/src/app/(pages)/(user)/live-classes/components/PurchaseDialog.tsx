@@ -117,7 +117,7 @@ export default function PurchaseDialog({
         if (selectedModule && selectedModule.isFree) {
           // For free modules, we check subscription which will auto-create if needed
           const response = await axios.get(
-            `${process.env.NEXT_PUBLIC_API_URL}/zoom/check-subscription/${classData.id}?moduleId=${selectedModuleId}`,
+            `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/check-subscription/${classData.id}?moduleId=${selectedModuleId}`,
             { withCredentials: true }
           );
 
@@ -134,25 +134,27 @@ export default function PurchaseDialog({
         }
       }
 
-      // Create subscription order
+      // Create registration order
       const orderResponse = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/subscribe`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/register`,
         {
-          zoomSessionId: classData.id,
+          zoomLiveClassId: classData.id,
           moduleId: selectedModuleId,
         },
         { withCredentials: true }
       );
 
-      console.log("Subscription order created:", orderResponse.data);
+      console.log("Registration order created:", orderResponse.data);
 
-      const { order, zoomSession, alreadySubscribed } = orderResponse.data.data;
+      const order = orderResponse.data.data.order;
+      const zoomLiveClass = orderResponse.data.data.zoomLiveClass;
+      const alreadyRegistered = orderResponse.data.data.alreadyRegistered;
 
-      // If user is already subscribed, show success and return
-      if (alreadySubscribed) {
+      // If user is already registered, show success and return
+      if (alreadyRegistered) {
         toast({
-          title: "Already Subscribed",
-          description: "You already have access to this class.",
+          title: "Already Registered",
+          description: "You are already registered for this class.",
         });
         onSuccess();
         return;
@@ -172,7 +174,7 @@ export default function PurchaseDialog({
         amount: order.amount,
         currency: order.currency,
         name: "Bansuri Vidya Mandir | Indian Classical Music Institute",
-        description: `Purchase: ${zoomSession.title}${selectedModuleId ? ` - Module` : ""}`,
+        description: `Purchase: ${zoomLiveClass.title}${selectedModuleId ? ` - Module` : ""}`,
         order_id: order.id,
         image: "/logo-black.png",
         handler: async function (response: any) {
@@ -181,12 +183,12 @@ export default function PurchaseDialog({
 
             // Verify payment
             const verifyResponse = await axios.post(
-              `${process.env.NEXT_PUBLIC_API_URL}/zoom/verify-payment`,
+              `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/verify-registration`,
               {
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_signature: response.razorpay_signature,
-                zoomSessionId: classData.id,
+                zoomLiveClassId: classData.id,
                 moduleId: selectedModuleId,
               },
               { withCredentials: true }
@@ -286,7 +288,7 @@ export default function PurchaseDialog({
   // Get module price (free or regular price)
   const getModulePrice = () => {
     if (isSelectedModuleFree()) return 0;
-    return classData.price;
+    return classData.registrationFee;
   };
 
   // Format date for display

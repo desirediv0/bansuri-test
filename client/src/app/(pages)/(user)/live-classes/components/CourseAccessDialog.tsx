@@ -72,6 +72,7 @@ export default function CourseAccessDialog({
   const initiateCourseAccess = async () => {
     try {
       setIsLoading(true);
+      console.log("Initiating course access payment for class:", classData.id);
 
       // Ensure Razorpay is loaded
       if (typeof window.Razorpay === "undefined") {
@@ -83,21 +84,23 @@ export default function CourseAccessDialog({
 
       // Create course access payment
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/pay-course-access`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/pay-course-access`,
         {
-          zoomSessionId: classData.id,
+          zoomLiveClassId: classData.id,
         },
         { withCredentials: true }
       );
 
-      const { order, alreadyHasAccess } = response.data.data;
+      console.log("Course access payment initiated:", response.data);
 
-      // If user already has access, show success and return
-      if (alreadyHasAccess) {
-        toast.success("You already have access to this class");
+      // If user already has access
+      if (response.data.data.alreadyHasAccess) {
+        toast.info("You already have access to this class");
         onSuccess();
         return;
       }
+
+      const order = response.data.data.order;
 
       // Get Razorpay Key from server
       const keyResponse = await axios.get(
@@ -120,12 +123,12 @@ export default function CourseAccessDialog({
 
             // Verify payment
             const verifyResponse = await axios.post(
-              `${process.env.NEXT_PUBLIC_API_URL}/zoom/verify-course-access`,
+              `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/verify-course-access`,
               {
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_signature: response.razorpay_signature,
-                zoomSessionId: classData.id,
+                zoomLiveClassId: classData.id,
               },
               { withCredentials: true }
             );

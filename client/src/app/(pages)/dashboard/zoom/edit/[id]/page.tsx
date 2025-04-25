@@ -10,49 +10,64 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { FileUpload } from "@/components/ui/dropzone";
-import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ArrowLeft, Loader2, Calendar, Clock, Info, Tag } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 
-interface EditSessionState {
+interface EditClassState {
   id: string;
   title: string;
   description?: string;
   startTime: string;
-  endTime: string;
   price: number;
+  getPrice: boolean;
+  registrationFee: number;
+  courseFee: number;
+  currentRaga?: string | null;
+  currentOrientation?: string | null;
   isActive: boolean;
   thumbnailUrl?: string | null;
+  capacity?: number | null;
+  recurringClass: boolean;
+  hasModules: boolean;
+  isFirstModuleFree: boolean;
+  sessionDescription?: string | null;
+  slug: string;
 }
 
-export default function EditZoomSessionPage() {
+export default function EditZoomClassPage() {
   const router = useRouter();
   const params = useParams();
-  const sessionId = params.id as string;
+  const classId = params.id as string;
 
-  const [session, setSession] = useState<EditSessionState | null>(null);
+  const [classData, setClassData] = useState<EditClassState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    const fetchSession = async () => {
+    const fetchClass = async () => {
       try {
         const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_URL}/zoom/session/${sessionId}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/class/${classId}`,
           { withCredentials: true }
         );
 
-        const sessionData = response.data.data;
-        setSession({
-          ...sessionData,
-          startTime: new Date(sessionData.startTime).toISOString().slice(0, 16),
-          endTime: new Date(sessionData.endTime).toISOString().slice(0, 16),
+        const classData = response.data.data;
+        setClassData({
+          ...classData,
+          startTime: new Date(classData.startTime).toISOString().slice(0, 16),
+
+          getPrice: classData.getPrice || false,
+          recurringClass: classData.recurringClass || false,
+          hasModules: classData.hasModules || false,
+          isFirstModuleFree: classData.isFirstModuleFree || false,
         });
       } catch (error) {
-        console.error("Error fetching session details:", error);
+        console.error("Error fetching class details:", error);
         toast({
           title: "Error",
-          description: "Failed to load session details. Please try again.",
+          description: "Failed to load class details. Please try again.",
           variant: "destructive",
         });
         router.push("/dashboard/zoom");
@@ -61,48 +76,58 @@ export default function EditZoomSessionPage() {
       }
     };
 
-    fetchSession();
-  }, [sessionId, toast, router]);
+    fetchClass();
+  }, [classId, toast, router]);
 
   const handleImageUpload = (fileUrl: string) => {
-    if (session) {
-      setSession({ ...session, thumbnailUrl: fileUrl });
+    if (classData) {
+      setClassData({ ...classData, thumbnailUrl: fileUrl });
     }
   };
 
-  const updateSession = async (e: React.FormEvent) => {
+  const updateClass = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!session) return;
+    if (!classData) return;
 
     setIsSaving(true);
 
     try {
       await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom/admin/session/${session.id}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/class/${classData.id}`,
         {
-          title: session.title,
-          description: session.description,
-          startTime: session.startTime,
-          endTime: session.endTime,
-          price: parseFloat(session.price.toString()),
-          isActive: session.isActive,
-          thumbnailUrl: session.thumbnailUrl,
+          title: classData.title,
+          description: classData.description,
+          startTime: classData.startTime,
+
+          price: 0,
+          getPrice: false,
+          registrationFee: parseFloat(classData.registrationFee.toString()),
+          courseFee: parseFloat(classData.courseFee.toString()),
+          currentRaga: classData.currentRaga,
+          currentOrientation: classData.currentOrientation,
+          isActive: classData.isActive,
+          thumbnailUrl: classData.thumbnailUrl,
+          capacity: classData.capacity,
+          recurringClass: false,
+          hasModules: false,
+          isFirstModuleFree: false,
+          sessionDescription: classData.sessionDescription,
+          slug: classData.slug,
         },
         { withCredentials: true }
       );
 
       toast({
         title: "Success",
-        description: "Session updated successfully",
+        description: "Class updated successfully",
       });
 
       router.push("/dashboard/zoom");
     } catch (error: any) {
-      console.error("Error updating session:", error);
+      console.error("Error updating class:", error);
       toast({
         title: "Error",
-        description:
-          error.response?.data?.message || "Failed to update session",
+        description: error.response?.data?.message || "Failed to update class",
         variant: "destructive",
       });
     } finally {
@@ -118,10 +143,10 @@ export default function EditZoomSessionPage() {
     );
   }
 
-  if (!session) {
+  if (!classData) {
     return (
       <div className="container mx-auto py-6">
-        <p>Session not found</p>
+        <p>Class not found</p>
         <Button onClick={() => router.push("/dashboard/zoom")}>
           Back to Live Classes
         </Button>
@@ -147,104 +172,277 @@ export default function EditZoomSessionPage() {
       </div>
 
       <Card>
-        <CardContent className="pt-6">
-          <form onSubmit={updateSession} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">Session Title</Label>
-              <Input
-                id="title"
-                value={session.title}
-                onChange={(e) =>
-                  setSession({ ...session, title: e.target.value })
-                }
-                required
-              />
-            </div>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-xl flex items-center">
+            <Info className="h-5 w-5 mr-2 text-blue-500" />
+            Class Information
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={updateClass} className="space-y-6">
+            <div className="grid grid-cols-1 gap-6">
+              {/* Basic Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="title">Class Title</Label>
+                  <Input
+                    id="title"
+                    value={classData.title}
+                    onChange={(e) =>
+                      setClassData({ ...classData, title: e.target.value })
+                    }
+                    required
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={session.description || ""}
-                onChange={(e) =>
-                  setSession({ ...session, description: e.target.value })
-                }
-              />
-            </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={classData.description || ""}
+                    onChange={(e) =>
+                      setClassData({
+                        ...classData,
+                        description: e.target.value,
+                      })
+                    }
+                  />
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="startTime">Start Time</Label>
-                <Input
-                  id="startTime"
-                  type="datetime-local"
-                  value={session.startTime}
-                  onChange={(e) =>
-                    setSession({ ...session, startTime: e.target.value })
-                  }
-                  required
-                />
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="sessionDescription">
+                    Session Description
+                  </Label>
+                  <Textarea
+                    id="sessionDescription"
+                    value={classData.sessionDescription || ""}
+                    onChange={(e) =>
+                      setClassData({
+                        ...classData,
+                        sessionDescription: e.target.value,
+                      })
+                    }
+                  />
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="endTime">End Time</Label>
-                <Input
-                  id="endTime"
-                  type="datetime-local"
-                  value={session.endTime}
-                  onChange={(e) =>
-                    setSession({ ...session, endTime: e.target.value })
-                  }
-                  required
-                />
+              <Separator />
+
+              {/* Schedule */}
+              <div>
+                <h3 className="text-base font-medium mb-4 flex items-center">
+                  <Calendar className="h-4 w-4 mr-2 text-blue-500" />
+                  Schedule
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="startTime">Start Time</Label>
+                    <div className="relative">
+                      <Clock className="h-4 w-4 absolute left-3 top-3 text-gray-500" />
+                      <Input
+                        id="startTime"
+                        type="datetime-local"
+                        value={classData.startTime}
+                        onChange={(e) =>
+                          setClassData({
+                            ...classData,
+                            startTime: e.target.value,
+                          })
+                        }
+                        className="pl-10"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="price">Price (₹)</Label>
-              <Input
-                id="price"
-                type="number"
-                min="0"
-                step="0.01"
-                value={session.price}
-                onChange={(e) =>
-                  setSession({ ...session, price: parseFloat(e.target.value) })
-                }
-                required
-              />
-            </div>
+              <Separator />
 
-            <div className="space-y-2">
-              <Label>Thumbnail Image</Label>
-              <FileUpload
-                onUploadComplete={handleImageUpload}
-                existingImageUrl={session.thumbnailUrl || null}
-              />
-            </div>
+              {/* Pricing */}
+              <div>
+                <h3 className="text-base font-medium mb-4 flex items-center">
+                  <Calendar className="h-4 w-4 mr-2 text-blue-500" />
+                  Pricing
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="registrationFee">
+                      Registration Fee (₹)
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-gray-500">
+                        ₹
+                      </span>
+                      <Input
+                        id="registrationFee"
+                        type="number"
+                        min="0"
+                        value={classData.registrationFee}
+                        onChange={(e) =>
+                          setClassData({
+                            ...classData,
+                            registrationFee: parseFloat(e.target.value),
+                          })
+                        }
+                        className="pl-7"
+                        required
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Initial fee to reserve a spot
+                    </p>
+                  </div>
 
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="isActive"
-                checked={session.isActive}
-                onCheckedChange={(checked) =>
-                  setSession({ ...session, isActive: checked })
-                }
-              />
-              <Label htmlFor="isActive">Active</Label>
-            </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="courseFee">Course Fee (₹)</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-gray-500">
+                        ₹
+                      </span>
+                      <Input
+                        id="courseFee"
+                        type="number"
+                        min="0"
+                        value={classData.courseFee}
+                        onChange={(e) =>
+                          setClassData({
+                            ...classData,
+                            courseFee: parseFloat(e.target.value),
+                          })
+                        }
+                        className="pl-7"
+                        required
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Fee to access class links
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-            <div className="flex justify-end gap-2 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => router.push("/dashboard/zoom")}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSaving}>
-                {isSaving ? "Saving..." : "Save Changes"}
-              </Button>
+              <Separator />
+
+              {/* Class Details */}
+              <div>
+                <h3 className="text-base font-medium mb-4 flex items-center">
+                  <Tag className="h-4 w-4 mr-2 text-blue-500" />
+                  Class Details
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="currentRaga">Current Raga</Label>
+                    <Input
+                      id="currentRaga"
+                      value={classData.currentRaga || ""}
+                      onChange={(e) =>
+                        setClassData({
+                          ...classData,
+                          currentRaga: e.target.value,
+                        })
+                      }
+                      placeholder="e.g., Madhyam Saptak, Sa - Pa"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Musical Raga covered in this class
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="currentOrientation">
+                      Current Orientation
+                    </Label>
+                    <Input
+                      id="currentOrientation"
+                      value={classData.currentOrientation || ""}
+                      onChange={(e) =>
+                        setClassData({
+                          ...classData,
+                          currentOrientation: e.target.value,
+                        })
+                      }
+                      placeholder="e.g., Hindi Classical, Carnatic"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Musical style or orientation
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="capacity">Capacity</Label>
+                    <Input
+                      id="capacity"
+                      type="number"
+                      min="1"
+                      value={classData.capacity || ""}
+                      onChange={(e) =>
+                        setClassData({
+                          ...classData,
+                          capacity: e.target.value
+                            ? parseInt(e.target.value)
+                            : null,
+                        })
+                      }
+                      placeholder="Maximum number of students"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Leave empty for unlimited capacity
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Thumbnail */}
+              <div>
+                <h3 className="text-base font-medium mb-4">Thumbnail Image</h3>
+                <FileUpload
+                  onUploadComplete={handleImageUpload}
+                  existingImageUrl={classData.thumbnailUrl || null}
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  Recommended size: 1280x720px (16:9 ratio)
+                </p>
+              </div>
+
+              <Separator />
+
+              {/* Settings */}
+              <div>
+                <h3 className="text-base font-medium mb-4">Settings</h3>
+                <div className="flex items-center justify-between py-2">
+                  <div>
+                    <Label htmlFor="isActive" className="cursor-pointer">
+                      Active Status
+                    </Label>
+                    <p className="text-xs text-gray-500">
+                      Make this class visible to students
+                    </p>
+                  </div>
+                  <Switch
+                    id="isActive"
+                    checked={classData.isActive}
+                    onCheckedChange={(checked) =>
+                      setClassData({ ...classData, isActive: checked })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => router.push("/dashboard/zoom")}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSaving}>
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
             </div>
           </form>
         </CardContent>
