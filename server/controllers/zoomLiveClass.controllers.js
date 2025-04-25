@@ -326,7 +326,7 @@ export const updateZoomLiveClass = asyncHandler(async (req, res) => {
 
   if (!zoomLiveClass) {
     // If a new thumbnail was uploaded but class doesn't exist, delete it from S3
-    if (thumbnailUrl && thumbnailUrl !== zoomLiveClass?.thumbnailUrl) {
+    if (thumbnailUrl) {
       try {
         await deleteFromS3(thumbnailUrl);
       } catch (err) {
@@ -345,7 +345,8 @@ export const updateZoomLiveClass = asyncHandler(async (req, res) => {
   if (registrationFee !== undefined)
     updatedFields.registrationFee = parseFloat(registrationFee);
   if (courseFee !== undefined) updatedFields.courseFee = parseFloat(courseFee);
-  if (capacity !== undefined) updatedFields.capacity = parseInt(capacity);
+  if (capacity !== undefined && capacity !== null)
+    updatedFields.capacity = parseInt(capacity);
   if (recurringClass !== undefined)
     updatedFields.recurringClass = recurringClass;
   if (hasModules !== undefined) updatedFields.hasModules = hasModules;
@@ -361,15 +362,18 @@ export const updateZoomLiveClass = asyncHandler(async (req, res) => {
 
   // Handle thumbnail update
   if (thumbnailUrl !== undefined) {
-    // If the thumbnail URL has changed, delete the old one from S3
-    if (
-      zoomLiveClass.thumbnailUrl &&
-      thumbnailUrl !== zoomLiveClass.thumbnailUrl
-    ) {
+    // If the thumbnail URL has changed and old one exists, delete the old one from S3
+    const oldThumbnailUrl = zoomLiveClass.thumbnailUrl;
+    const thumbnailHasChanged =
+      oldThumbnailUrl && oldThumbnailUrl !== thumbnailUrl;
+
+    if (thumbnailHasChanged) {
       try {
-        await deleteFromS3(zoomLiveClass.thumbnailUrl);
+        console.log(`Deleting old thumbnail: ${oldThumbnailUrl}`);
+        await deleteFromS3(oldThumbnailUrl);
       } catch (err) {
         console.error("Error deleting old thumbnail:", err);
+        // Continue with the update even if thumbnail deletion fails
       }
     }
     updatedFields.thumbnailUrl = thumbnailUrl;
@@ -391,8 +395,10 @@ export const updateZoomLiveClass = asyncHandler(async (req, res) => {
         )
       );
   } catch (error) {
+    console.error("Error updating zoom live class:", error);
     // If update fails and we uploaded a new thumbnail, delete it
-    if (thumbnailUrl && thumbnailUrl !== zoomLiveClass.thumbnailUrl) {
+    const oldThumbnailUrl = zoomLiveClass.thumbnailUrl;
+    if (thumbnailUrl && thumbnailUrl !== oldThumbnailUrl) {
       try {
         await deleteFromS3(thumbnailUrl);
       } catch (err) {
@@ -407,19 +413,30 @@ export const updateZoomLiveClass = asyncHandler(async (req, res) => {
 export const deleteZoomLiveClass = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
+  console.log(`Attempting to delete zoom live class with ID: ${id}`);
+
   const zoomLiveClass = await prisma.zoomLiveClass.findUnique({
     where: { id },
     include: {
       subscriptions: true,
+      modules: true,
     },
   });
 
   if (!zoomLiveClass) {
+    console.log(`Zoom live class with ID ${id} not found`);
     throw new ApiError(404, "Zoom live class not found");
   }
 
+  console.log(
+    `Found zoom live class: ${zoomLiveClass.title} with ${zoomLiveClass.subscriptions.length} subscriptions and ${zoomLiveClass.modules.length} modules`
+  );
+
   // Delete the Zoom live class and related records in a transaction
   try {
+    console.log(
+      `Starting transaction to delete zoom live class and related data`
+    );
     await prisma.$transaction(async (tx) => {
       // 1. First, find all subscriptions for this class
       const subscriptions = await tx.zoomSubscription.findMany({
@@ -429,37 +446,51 @@ export const deleteZoomLiveClass = asyncHandler(async (req, res) => {
 
       // 2. Get all subscription IDs
       const subscriptionIds = subscriptions.map((sub) => sub.id);
+      console.log(`Found ${subscriptionIds.length} subscriptions to delete`);
 
       // 3. Delete all related payments first
       if (subscriptionIds.length > 0) {
-        await tx.zoomPayment.deleteMany({
+        const deletedPayments = await tx.zoomPayment.deleteMany({
           where: {
             subscriptionId: {
               in: subscriptionIds,
             },
           },
         });
+        console.log(`Deleted ${deletedPayments.count} related payments`);
       }
 
       // 4. Delete all modules
-      await tx.zoomSessionModule.deleteMany({
+      const deletedModules = await tx.zoomSessionModule.deleteMany({
         where: { zoomLiveClassId: id },
       });
+      console.log(`Deleted ${deletedModules.count} modules`);
 
       // 5. Delete all subscriptions
-      await tx.zoomSubscription.deleteMany({
+      const deletedSubscriptions = await tx.zoomSubscription.deleteMany({
         where: { zoomLiveClassId: id },
       });
+      console.log(`Deleted ${deletedSubscriptions.count} subscriptions`);
 
       // 6. Finally, delete the class itself
       await tx.zoomLiveClass.delete({
         where: { id },
       });
+      console.log(`Deleted zoom live class with ID: ${id}`);
     });
 
-    // Delete the thumbnail if it exists
+    // Delete the thumbnail if it exists (after the database transaction completes)
     if (zoomLiveClass.thumbnailUrl) {
-      await deleteFromS3(zoomLiveClass.thumbnailUrl);
+      try {
+        console.log(
+          `Attempting to delete thumbnail from S3: ${zoomLiveClass.thumbnailUrl}`
+        );
+        await deleteFromS3(zoomLiveClass.thumbnailUrl);
+        console.log(`Successfully deleted thumbnail from S3`);
+      } catch (s3Error) {
+        console.error(`Failed to delete thumbnail from S3: ${s3Error.message}`);
+        // Continue with the response even if S3 deletion fails
+      }
     }
 
     return res
@@ -469,7 +500,10 @@ export const deleteZoomLiveClass = asyncHandler(async (req, res) => {
       );
   } catch (error) {
     console.error("Error deleting zoom live class:", error);
-    throw new ApiError(500, "Failed to delete Zoom live class");
+    throw new ApiError(
+      500,
+      "Failed to delete Zoom live class: " + error.message
+    );
   }
 });
 

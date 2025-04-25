@@ -200,11 +200,44 @@ export default function ZoomSessionsTable({
                     <Edit size={16} />
                   </Button>
                 </Link>
-                <Link href={`/dashboard/zoom/delete/${liveClass.id}`}>
-                  <Button variant="outline" size="sm" title="Delete Live Class">
-                    <Trash2 size={16} />
-                  </Button>
-                </Link>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title="Delete Live Class"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    if (
+                      window.confirm(
+                        `Are you sure you want to delete "${liveClass.title}"? This action cannot be undone.`
+                      )
+                    ) {
+                      try {
+                        setIsLoading(true);
+                        await axios.delete(
+                          `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/class/${liveClass.id}`,
+                          { withCredentials: true }
+                        );
+                        toast({
+                          title: "Success",
+                          description: "Class deleted successfully",
+                        });
+                        refreshData();
+                      } catch (error) {
+                        console.error("Error deleting class:", error);
+                        toast({
+                          title: "Error",
+                          description:
+                            "Failed to delete class. Please try again.",
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setIsLoading(false);
+                      }
+                    }
+                  }}
+                >
+                  <Trash2 size={16} />
+                </Button>
                 <Link href={`/dashboard/zoom/attendees/${liveClass.id}`}>
                   <Button variant="outline" size="sm" title="View Attendees">
                     <Users size={16} />

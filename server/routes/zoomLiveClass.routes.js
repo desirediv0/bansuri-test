@@ -33,6 +33,8 @@ const router = Router();
 // Public routes
 router.get("/classes", getUserZoomLiveClasses);
 router.get("/class/:idOrSlug", getZoomLiveClass);
+// Add compatibility route for the older "session" naming convention
+router.get("/session/:idOrSlug", getZoomLiveClass);
 
 // User routes (protected)
 router.get("/my-subscriptions", verifyJWTToken, getMyZoomSubscriptions);
@@ -68,6 +70,19 @@ router.put(
 );
 router.delete(
   "/admin/class/:id",
+  verifyJWTToken,
+  verifyAdmin,
+  deleteZoomLiveClass
+);
+// Add compatibility routes for the older "session" naming convention
+router.put(
+  "/admin/session/:id",
+  verifyJWTToken,
+  verifyAdmin,
+  updateZoomLiveClass
+);
+router.delete(
+  "/admin/session/:id",
   verifyJWTToken,
   verifyAdmin,
   deleteZoomLiveClass

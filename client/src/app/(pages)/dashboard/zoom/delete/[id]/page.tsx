@@ -33,7 +33,7 @@ export default function DeleteZoomSessionPage() {
     const fetchSessionData = async () => {
       try {
         const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/session/${sessionId}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/class/${sessionId}`,
           { withCredentials: true }
         );
         setSession(response.data.data);
