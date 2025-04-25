@@ -143,20 +143,12 @@ const MyLiveClasses = () => {
         `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/my-subscriptions`,
         { withCredentials: true }
       );
-      console.log("Fetched subscriptions:", response.data.data);
 
       // Check for subscriptions that should be active but aren't showing correctly
       const potentialIssues = response.data.data.filter(
         (sub: Subscription) =>
           sub.status === "ACTIVE" && sub.isApproved && !sub.hasAccessToLinks
       );
-
-      if (potentialIssues.length > 0) {
-        console.log(
-          "Found approved subscriptions without access:",
-          potentialIssues
-        );
-      }
 
       setSubscriptions(response.data.data);
     } catch (error) {
@@ -210,8 +202,6 @@ const MyLiveClasses = () => {
         `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/check-subscription/${zoomSessionId}${queryParams}`,
         { withCredentials: true }
       );
-
-      console.log("Join class response:", response.data);
 
       if (response.data.data.isSubscribed) {
         window.open(response.data.data.meetingDetails.link, "_blank");
@@ -292,10 +282,6 @@ const MyLiveClasses = () => {
         image: "/logo-black.png",
         handler: async function (response: any) {
           try {
-            console.log("Payment successful, verifying with params:", {
-              zoomLiveClassId: subscription.zoomSession.id,
-            });
-
             // Verify payment
             const verifyResponse = await axios.post(
               `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/verify-course-access`,
@@ -308,7 +294,6 @@ const MyLiveClasses = () => {
               { withCredentials: true }
             );
 
-            console.log("Payment verification result:", verifyResponse.data);
             toast.success("Course access payment successful!");
             fetchSubscriptions(); // Refresh the list
           } catch (error) {

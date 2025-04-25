@@ -915,8 +915,6 @@ export const checkSubscription = asyncHandler(async (req, res) => {
   const { zoomLiveClassId } = req.params;
   const { moduleId } = req.query;
 
-  console.log("checkSubscription called with ID/slug:", zoomLiveClassId);
-
   // Check if ID is undefined or invalid
   if (!zoomLiveClassId) {
     throw new ApiError(400, "Invalid or missing class ID/slug");
@@ -929,7 +927,6 @@ export const checkSubscription = asyncHandler(async (req, res) => {
 
   // If not found by ID, try to find by slug
   if (!zoomLiveClass) {
-    console.log("Class not found by ID, trying slug lookup");
     const zoomLiveClassBySlug = await prisma.zoomLiveClass.findUnique({
       where: { slug: zoomLiveClassId },
     });
@@ -942,8 +939,6 @@ export const checkSubscription = asyncHandler(async (req, res) => {
       throw new ApiError(404, "Zoom live class not found");
     }
 
-    console.log("Class found by slug, ID:", zoomLiveClassBySlug.id);
-
     // Use the class found by slug
     const subscription = await prisma.zoomSubscription.findFirst({
       where: {
@@ -952,8 +947,6 @@ export const checkSubscription = asyncHandler(async (req, res) => {
         ...(moduleId ? { moduleId } : {}),
       },
     });
-
-    console.log("Subscription found for slug lookup:", !!subscription);
 
     // Default response
     const responseData = {
@@ -991,8 +984,6 @@ export const checkSubscription = asyncHandler(async (req, res) => {
       );
   }
 
-  console.log("Class found by ID:", zoomLiveClassId);
-
   // Continue with the original logic for ID-based lookup
   const subscription = await prisma.zoomSubscription.findFirst({
     where: {
@@ -1001,17 +992,6 @@ export const checkSubscription = asyncHandler(async (req, res) => {
       ...(moduleId ? { moduleId } : {}),
     },
   });
-
-  console.log("Subscription found for ID lookup:", !!subscription);
-  if (subscription) {
-    console.log("Subscription details:", {
-      id: subscription.id,
-      status: subscription.status,
-      isRegistered: subscription.isRegistered,
-      isApproved: subscription.isApproved,
-      hasAccessToLinks: subscription.hasAccessToLinks,
-    });
-  }
 
   // Default response
   const responseData = {

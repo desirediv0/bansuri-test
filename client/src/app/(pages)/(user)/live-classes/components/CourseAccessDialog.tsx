@@ -72,7 +72,6 @@ export default function CourseAccessDialog({
   const initiateCourseAccess = async () => {
     try {
       setIsLoading(true);
-      console.log("Initiating course access payment for class:", classData.id);
 
       // Ensure Razorpay is loaded
       if (typeof window.Razorpay === "undefined") {
