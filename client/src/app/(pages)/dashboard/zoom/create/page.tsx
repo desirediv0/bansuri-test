@@ -29,6 +29,7 @@ interface FormData {
   thumbnailUrl: string;
   registrationFee: string;
   courseFee: string;
+  courseFeeEnabled: boolean;
   currentRaga: string;
   currentOrientation: string;
   sessionDescription: string;
@@ -44,6 +45,7 @@ export default function CreateZoomLiveClassPage() {
     thumbnailUrl: "",
     registrationFee: "0",
     courseFee: "0",
+    courseFeeEnabled: false,
     currentRaga: "",
     currentOrientation: "",
     sessionDescription: "",
@@ -99,9 +101,9 @@ export default function CreateZoomLiveClassPage() {
         title: formData.title,
         description: formData.description || "",
         startTime: formData.startTime,
-
         registrationFee: parseFloat(formData.registrationFee),
         courseFee: parseFloat(formData.courseFee),
+        courseFeeEnabled: formData.courseFeeEnabled,
         currentRaga: formData.currentRaga || null,
         currentOrientation: formData.currentOrientation || null,
         sessionDescription: formData.sessionDescription || null,
@@ -249,64 +251,60 @@ export default function CreateZoomLiveClassPage() {
 
               <Separator />
 
-              {/* Pricing */}
-              <div>
-                <h3 className="text-base font-medium mb-4 flex items-center">
-                  <IndianRupee className="h-4 w-4 mr-2 text-blue-500" />
-                  Pricing
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="registrationFee"
-                      className="text-sm font-medium"
-                    >
-                      Registration Fee (₹){" "}
-                      <span className="text-red-500">*</span>
-                    </Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-gray-500">
-                        ₹
-                      </span>
-                      <Input
-                        id="registrationFee"
-                        name="registrationFee"
-                        type="number"
-                        min="0"
-                        value={formData.registrationFee}
-                        onChange={handleChange}
-                        className="pl-7"
-                        required
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      Initial fee to reserve a spot
-                    </p>
-                  </div>
+              {/* Fees Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label
+                    htmlFor="registrationFee"
+                    className="text-sm font-medium"
+                  >
+                    Registration Fee <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="registrationFee"
+                    name="registrationFee"
+                    type="number"
+                    value={formData.registrationFee}
+                    onChange={handleChange}
+                    placeholder="Enter registration fee"
+                    className="w-48"
+                    required
+                  />
+                </div>
 
-                  <div className="space-y-2">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
                     <Label htmlFor="courseFee" className="text-sm font-medium">
-                      Course Fee (₹) <span className="text-red-500">*</span>
+                      Course Fee <span className="text-red-500">*</span>
                     </Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-gray-500">
-                        ₹
-                      </span>
-                      <Input
-                        id="courseFee"
-                        name="courseFee"
-                        type="number"
-                        min="0"
-                        value={formData.courseFee}
-                        onChange={handleChange}
-                        className="pl-7"
-                        required
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      Fee to access class links
-                    </p>
+                    <Input
+                      id="courseFee"
+                      name="courseFee"
+                      type="number"
+                      value={formData.courseFee}
+                      onChange={handleChange}
+                      placeholder="Enter course fee"
+                      className="w-48"
+                      required
+                    />
                   </div>
+                  <div className="flex items-center space-x-2 mt-2">
+                    <Switch
+                      id="courseFeeEnabled"
+                      checked={formData.courseFeeEnabled}
+                      onCheckedChange={(checked) =>
+                        handleSwitchChange("courseFeeEnabled", checked)
+                      }
+                    />
+                    <Label htmlFor="courseFeeEnabled" className="text-sm">
+                      Enable course fee requirement
+                    </Label>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-1">
+                    When enabled, students must pay the course fee to access
+                    class links after registration. When disabled, students get
+                    access to links immediately after registration approval.
+                  </p>
                 </div>
               </div>
 

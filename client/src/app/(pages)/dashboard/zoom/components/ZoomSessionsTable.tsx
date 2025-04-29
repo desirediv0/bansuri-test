@@ -21,9 +21,26 @@ import {
   ChevronDown,
   ChevronUp,
   Layers,
+  UserPlus,
+  UserCheck,
+  UserX,
+  Settings,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Loader2 } from "lucide-react";
 
 // Type definitions
 interface User {
@@ -41,6 +58,18 @@ interface Module {
   isFree: boolean;
 }
 
+interface Registration {
+  id: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  isRegistered: boolean;
+  hasAccessToLinks: boolean;
+  status: string;
+}
+
 interface ZoomLiveClass {
   id: string;
   title: string;
@@ -49,6 +78,7 @@ interface ZoomLiveClass {
   price: number;
   registrationFee: number;
   courseFee: number;
+  courseFeeEnabled: boolean;
   isActive: boolean;
   hasModules: boolean;
   isFirstModuleFree: boolean;
@@ -74,6 +104,22 @@ export default function ZoomSessionsTable({
     [key: string]: boolean;
   }>({});
   const { toast } = useToast();
+  const [selectedClass, setSelectedClass] = useState<ZoomLiveClass | null>(
+    null
+  );
+  const [showRegistrationsDialog, setShowRegistrationsDialog] = useState(false);
+  const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [loadingRegistrations, setLoadingRegistrations] = useState(false);
+  const [updatingCourseFee, setUpdatingCourseFee] = useState(false);
+  const [processingAction, setProcessingAction] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    type: "approve" | "remove" | "delete";
+    title: string;
+    message: string;
+    action: () => Promise<void>;
+  } | null>(null);
 
   const formatDate = (dateString: string): string => {
     return new Date(dateString).toLocaleString();
@@ -110,6 +156,170 @@ export default function ZoomSessionsTable({
     }));
   };
 
+  const handleToggleCourseFee = async (classId: string, enabled: boolean) => {
+    try {
+      setUpdatingCourseFee(true);
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/class/${classId}/toggle-course-fee`,
+        { courseFeeEnabled: enabled },
+        { withCredentials: true }
+      );
+      refreshData();
+      toast({
+        title: "Success",
+        description: `Course fee requirement ${enabled ? "enabled" : "disabled"} successfully`,
+      });
+    } catch (error) {
+      console.error("Error toggling course fee:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update course fee setting",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingCourseFee(false);
+    }
+  };
+
+  const handleViewRegistrations = async (liveClass: ZoomLiveClass) => {
+    try {
+      setSelectedClass(liveClass);
+      setShowRegistrationsDialog(true);
+      setLoadingRegistrations(true);
+
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/class/${liveClass.id}/registrations`,
+        { withCredentials: true }
+      );
+
+      setRegistrations(response.data.data);
+    } catch (error) {
+      console.error("Error fetching registrations:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load registrations",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingRegistrations(false);
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    if (!selectedClass || selectedUsers.length === 0) return;
+
+    setConfirmAction({
+      type: "approve",
+      title: "Confirm Approval",
+      message: `Are you sure you want to approve ${selectedUsers.length} selected user(s)? ${
+        selectedClass.courseFeeEnabled
+          ? "They will still need to pay the course fee to access the class."
+          : "They will get immediate access to the class."
+      }`,
+      action: async () => {
+        try {
+          setProcessingAction(true);
+          await axios.post(
+            `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/class/${selectedClass.id}/approve-registrations`,
+            { userIds: selectedUsers },
+            { withCredentials: true }
+          );
+
+          toast({
+            title: "Success",
+            description: "Selected registrations approved successfully",
+          });
+
+          await handleViewRegistrations(selectedClass);
+          setSelectedUsers([]);
+        } catch (error) {
+          console.error("Error approving registrations:", error);
+          toast({
+            title: "Error",
+            description: "Failed to approve registrations",
+            variant: "destructive",
+          });
+        } finally {
+          setProcessingAction(false);
+          setShowConfirmDialog(false);
+        }
+      },
+    });
+    setShowConfirmDialog(true);
+  };
+
+  const handleRemoveAccess = async () => {
+    if (!selectedClass || selectedUsers.length === 0) return;
+
+    setConfirmAction({
+      type: "remove",
+      title: "Confirm Access Removal",
+      message: `Are you sure you want to remove access for ${selectedUsers.length} selected user(s)? They will need to be approved again to regain access.`,
+      action: async () => {
+        try {
+          setProcessingAction(true);
+          await axios.post(
+            `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/class/${selectedClass.id}/remove-access`,
+            { userIds: selectedUsers },
+            { withCredentials: true }
+          );
+
+          toast({
+            title: "Success",
+            description: "Access removed for selected users",
+          });
+
+          await handleViewRegistrations(selectedClass);
+          setSelectedUsers([]);
+        } catch (error) {
+          console.error("Error removing access:", error);
+          toast({
+            title: "Error",
+            description: "Failed to remove access",
+            variant: "destructive",
+          });
+        } finally {
+          setProcessingAction(false);
+          setShowConfirmDialog(false);
+        }
+      },
+    });
+    setShowConfirmDialog(true);
+  };
+
+  const handleDeleteClass = async (liveClass: ZoomLiveClass) => {
+    setConfirmAction({
+      type: "delete",
+      title: "Confirm Delete",
+      message: `Are you sure you want to delete "${liveClass.title}"? This action cannot be undone.`,
+      action: async () => {
+        try {
+          setIsLoading(true);
+          await axios.delete(
+            `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/class/${liveClass.id}`,
+            { withCredentials: true }
+          );
+          toast({
+            title: "Success",
+            description: "Class deleted successfully",
+          });
+          refreshData();
+        } catch (error) {
+          console.error("Error deleting class:", error);
+          toast({
+            title: "Error",
+            description: "Failed to delete class. Please try again.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsLoading(false);
+          setShowConfirmDialog(false);
+        }
+      },
+    });
+    setShowConfirmDialog(true);
+  };
+
   return (
     <Table>
       <TableHeader>
@@ -120,6 +330,7 @@ export default function ZoomSessionsTable({
           <TableHead>Start Time</TableHead>
           <TableHead>Reg. Fee</TableHead>
           <TableHead>Course Fee</TableHead>
+          <TableHead>Course Fee Status</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Subscribers</TableHead>
           <TableHead>Modules</TableHead>
@@ -182,6 +393,18 @@ export default function ZoomSessionsTable({
               <TableCell>₹{liveClass.registrationFee}</TableCell>
               <TableCell>₹{liveClass.courseFee}</TableCell>
               <TableCell>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    checked={liveClass.courseFeeEnabled}
+                    onCheckedChange={(checked) =>
+                      handleToggleCourseFee(liveClass.id, checked)
+                    }
+                    disabled={updatingCourseFee}
+                  />
+                  <Label>Course Fee Required</Label>
+                </div>
+              </TableCell>
+              <TableCell>
                 <span
                   className={`px-2 py-1 rounded text-sm ${
                     liveClass.isActive
@@ -204,39 +427,17 @@ export default function ZoomSessionsTable({
                   variant="outline"
                   size="sm"
                   title="Delete Live Class"
-                  onClick={async (e) => {
-                    e.preventDefault();
-                    if (
-                      window.confirm(
-                        `Are you sure you want to delete "${liveClass.title}"? This action cannot be undone.`
-                      )
-                    ) {
-                      try {
-                        setIsLoading(true);
-                        await axios.delete(
-                          `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/admin/class/${liveClass.id}`,
-                          { withCredentials: true }
-                        );
-                        toast({
-                          title: "Success",
-                          description: "Class deleted successfully",
-                        });
-                        refreshData();
-                      } catch (error) {
-                        console.error("Error deleting class:", error);
-                        toast({
-                          title: "Error",
-                          description:
-                            "Failed to delete class. Please try again.",
-                          variant: "destructive",
-                        });
-                      } finally {
-                        setIsLoading(false);
-                      }
-                    }
-                  }}
+                  onClick={() => handleDeleteClass(liveClass)}
                 >
                   <Trash2 size={16} />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleViewRegistrations(liveClass)}
+                  title="Manage Registrations"
+                >
+                  <UserPlus size={16} />
                 </Button>
                 <Link href={`/dashboard/zoom/attendees/${liveClass.id}`}>
                   <Button variant="outline" size="sm" title="View Attendees">

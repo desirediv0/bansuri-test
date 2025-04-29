@@ -9,17 +9,13 @@ import {
   Calendar,
   Clock,
   User,
-  Users,
   Info,
   Share2,
   Loader2,
   CheckCircle2,
-  IndianRupee,
-  Check,
   Video,
   Copy,
   CreditCard,
-  ChevronLeft,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -152,21 +148,19 @@ export default function ClassDetails() {
 
   const checkSubscriptionStatus = async () => {
     try {
-      console.log("Checking subscription status for ID:", id);
-
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/check-subscription/${id}`,
         { withCredentials: true }
       );
 
       if (response.data.data) {
-        const { isSubscribed, isRegistered, hasAccessToLinks, meetingDetails } =
-          response.data.data;
-
-        console.log("Subscription check results:", {
+        const {
+          isSubscribed,
           isRegistered,
           hasAccessToLinks,
-        });
+          meetingDetails,
+          courseFeeEnabled,
+        } = response.data.data;
 
         setIsRegistered(!!isRegistered);
         setHasAccessToLinks(!!hasAccessToLinks);
@@ -179,6 +173,7 @@ export default function ClassDetails() {
             isSubscribed: !!isSubscribed,
             isRegistered: !!isRegistered,
             hasAccessToLinks: !!hasAccessToLinks,
+            courseFeeEnabled: courseFeeEnabled,
             ...(hasAccessToLinks && meetingDetails
               ? {
                   zoomLink: meetingDetails.link || prev.zoomLink,
@@ -189,10 +184,16 @@ export default function ClassDetails() {
           };
         });
 
-        if (response.data.data.reactivated) {
+        // Show appropriate toast messages based on status
+        if (isRegistered && !hasAccessToLinks && courseFeeEnabled) {
           toast({
-            title: "Subscription Reactivated",
-            description: "Your previous subscription has been reactivated.",
+            title: "Course Fee Required",
+            description: "Please pay the course fee to access class links.",
+          });
+        } else if (isRegistered && !courseFeeEnabled) {
+          toast({
+            title: "Registration Complete",
+            description: "You can now access the class links.",
           });
         }
       }
@@ -200,8 +201,6 @@ export default function ClassDetails() {
       setApiChecksCompleted((prev) => ({ ...prev, checkSubscription: true }));
     } catch (error: any) {
       console.error("Error checking subscription status:", error);
-
-      // Only show toast for errors other than 404, as 404 already handled by fetchClassDetails
       if (error.response?.status !== 404) {
         toast({
           title: "Note",
@@ -209,7 +208,6 @@ export default function ClassDetails() {
             "Could not check subscription status. This won't affect your ability to view the class.",
         });
       }
-
       setApiChecksCompleted((prev) => ({ ...prev, checkSubscription: true }));
     }
   };
@@ -284,39 +282,25 @@ export default function ClassDetails() {
         { withCredentials: true }
       );
 
-      if (response.data.data.isSubscribed) {
+      if (
+        response.data.data.hasAccessToLinks &&
+        response.data.data.meetingDetails?.link
+      ) {
         window.open(response.data.data.meetingDetails.link, "_blank");
-      } else if (response.data.data.isPending) {
-        toast({
-          title: "Pending Approval",
-          description:
-            "Your subscription is pending approval from the administrator.",
-          variant: "destructive",
-        });
       } else {
         toast({
           title: "Access Denied",
-          description: "You need to purchase this class to join.",
+          description: "You need to complete registration to join this class.",
           variant: "destructive",
         });
       }
     } catch (error: any) {
       console.error("Error checking subscription:", error);
-
-      if (error.response && error.response.status === 404) {
-        toast({
-          title: "Class Not Found",
-          description:
-            "This class is no longer available or may have been cancelled.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to join the class. Please try again.",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Error",
+        description: "Failed to join the class. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsJoining(false);
     }
@@ -726,41 +710,51 @@ export default function ClassDetails() {
               <div className="space-y-4">
                 {userIsRegistered && !userHasAccess ? (
                   <div>
-                    {!classData.isApproved ? (
-                      <Button
-                        disabled
-                        className="w-full bg-yellow-500 hover:bg-yellow-600"
-                      >
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Waiting for Admin Approval
-                      </Button>
-                    ) : (
+                    {classData?.courseFeeEnabled ? (
                       <Button
                         onClick={() => setShowCourseAccessDialog(true)}
-                        className="w-full bg-green-600 hover:bg-green-700"
+                        className="w-full bg-gradient-to-r from-[#af1d33] to-[#8f1729] hover:from-[#8f1729] hover:to-[#af1d33] text-white py-6 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
                       >
                         <CreditCard className="mr-2 h-5 w-5" />
                         Pay Course Fee
                       </Button>
+                    ) : (
+                      <Button
+                        onClick={() => handleJoinClass()}
+                        disabled={isJoining}
+                        className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-600 text-white py-6 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
+                      >
+                        {isJoining ? (
+                          <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                        ) : (
+                          <Video className="h-5 w-5 mr-2" />
+                        )}
+                        {isJoining ? "Joining..." : "Join Live Class"}
+                      </Button>
                     )}
-                    <p className="text-sm text-gray-500 mt-2 text-center">
-                      {!classData.isApproved
-                        ? "Your registration is pending approval. You'll be able to pay the course fee after admin approval."
-                        : "Pay the course fee to get access to the class links"}
+                    <p className="text-sm text-gray-600 mt-3 text-center">
+                      {classData?.courseFeeEnabled
+                        ? "Complete your payment to get access to the live class"
+                        : "You're all set! Click to join the live class"}
                     </p>
                   </div>
                 ) : userHasAccess ? (
                   <Button
                     onClick={() => handleJoinClass()}
-                    className="w-full bg-green-600 hover:bg-green-700"
+                    disabled={isJoining}
+                    className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-600 text-white py-6 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
                   >
-                    <Video className="mr-2 h-5 w-5" />
-                    Join Class
+                    {isJoining ? (
+                      <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                    ) : (
+                      <Video className="h-5 w-5 mr-2" />
+                    )}
+                    {isJoining ? "Joining..." : "Join Live Class"}
                   </Button>
                 ) : (
                   <Button
                     onClick={handlePurchase}
-                    className="w-full bg-[#af1d33] hover:bg-[#8f1729]"
+                    className="w-full bg-gradient-to-r from-[#af1d33] to-[#8f1729] hover:from-[#8f1729] hover:to-[#af1d33] text-white py-6 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
                   >
                     <CreditCard className="mr-2 h-5 w-5" />
                     Register for Class
@@ -779,36 +773,47 @@ export default function ClassDetails() {
                 </Button>
               </div>
 
-              <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-100 flex items-start text-sm">
-                <Info className="h-5 w-5 text-blue-500 mr-3 mt-0.5 flex-shrink-0" />
-                <div className="text-blue-800">
-                  <p className="font-medium">Access Information</p>
-                  <p className="mt-1">
-                    {isAuthenticated ? (
-                      hasAccessToLinks || classData.hasAccessToLinks ? (
-                        <>
-                          You have full access to this class. Click the "Join
-                          Class Now" button or use the Zoom details below to
-                          join at the scheduled time.
-                        </>
-                      ) : isRegistered || classData.isRegistered ? (
-                        <>
-                          You're registered for this class but you need to pay
-                          the course fee (₹{classData.courseFee}) to access
-                          meeting details. Click "Pay Course Fee" above.
-                        </>
+              <div className="mt-6 p-6 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <Info className="h-5 w-5 text-blue-600 mt-1 flex-shrink-0" />
+                  <div>
+                    <h4 className="font-semibold text-blue-900 mb-2">
+                      Access Information
+                    </h4>
+                    <p className="text-blue-800 text-sm leading-relaxed">
+                      {isAuthenticated ? (
+                        hasAccessToLinks || classData?.hasAccessToLinks ? (
+                          <>
+                            You have full access to this live class. Click the
+                            "Join Live Class" button to participate at the
+                            scheduled time.
+                          </>
+                        ) : isRegistered || classData?.isRegistered ? (
+                          classData?.courseFeeEnabled ? (
+                            <>
+                              You're registered! Complete the course fee payment
+                              (₹{classData.courseFee}) to join the live class.
+                            </>
+                          ) : (
+                            <>
+                              Registration complete! You can now join the live
+                              class at the scheduled time.
+                            </>
+                          )
+                        ) : (
+                          <>
+                            Register now with a one-time fee of ₹
+                            {classData.registrationFee}.
+                            {classData?.courseFeeEnabled
+                              ? " After registration, you'll need to pay the course fee to join the live class."
+                              : " After registration, you'll get immediate access to join the live class."}
+                          </>
+                        )
                       ) : (
-                        <>
-                          Complete your registration by paying the registration
-                          fee (₹{classData.registrationFee}). After
-                          registration, you'll need to pay the course fee (₹
-                          {classData.courseFee}) to access the class.
-                        </>
-                      )
-                    ) : (
-                      "Sign in to register for this class. After registration and payment, you'll receive access to join at the scheduled time."
-                    )}
-                  </p>
+                        "Sign in to register for this live class and start your learning journey."
+                      )}
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -816,111 +821,29 @@ export default function ClassDetails() {
               {isAuthenticated &&
                 (hasAccessToLinks || classData.hasAccessToLinks) &&
                 classData.zoomLink && (
-                  <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-100">
-                    <h3 className="font-medium text-green-800 mb-2 flex items-center">
-                      <Video className="h-5 w-5 text-green-600 mr-2" />
-                      Zoom Meeting Details
-                    </h3>
-
-                    <div className="space-y-3 text-sm">
-                      <div className="flex flex-col">
-                        <span className="font-medium text-gray-700">
-                          Meeting Link:
-                        </span>
-                        <div className="flex items-center mt-1">
-                          <a
-                            href={classData.zoomLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 hover:underline break-words flex-1 bg-white px-3 py-2 rounded-l-md border border-gray-200"
-                          >
-                            {classData.zoomLink.substring(0, 40)}...
-                          </a>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="h-10 rounded-l-none"
-                            onClick={() => {
-                              navigator.clipboard.writeText(
-                                classData.zoomLink || ""
-                              );
-                              toast({
-                                description: "Meeting link copied to clipboard",
-                              });
-                            }}
-                          >
-                            <Copy className="h-4 w-4 mr-2" />
-                            Copy
-                          </Button>
-                        </div>
+                  <div className="mt-4 p-6 bg-gradient-to-br from-green-50 to-green-100 rounded-xl border border-green-200 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-semibold text-green-800 text-lg flex items-center">
+                          <Video className="h-5 w-5 text-green-600 mr-2" />
+                          Live Class Access
+                        </h3>
+                        <p className="text-green-700 mt-1 text-sm">
+                          Click the button below to join the live class at the
+                          scheduled time
+                        </p>
                       </div>
-
-                      {classData.zoomMeetingId && (
-                        <div className="flex flex-col">
-                          <span className="font-medium text-gray-700">
-                            Meeting ID:
-                          </span>
-                          <div className="flex items-center mt-1">
-                            <code className="bg-white px-3 py-2 rounded-l-md border border-gray-200 text-gray-800 flex-1">
-                              {classData.zoomMeetingId}
-                            </code>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="h-10 rounded-l-none"
-                              onClick={() => {
-                                navigator.clipboard.writeText(
-                                  classData.zoomMeetingId || ""
-                                );
-                                toast({
-                                  description: "Meeting ID copied to clipboard",
-                                });
-                              }}
-                            >
-                              <Copy className="h-4 w-4 mr-2" />
-                              Copy
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
-                      {classData.zoomPassword && (
-                        <div className="flex flex-col">
-                          <span className="font-medium text-gray-700">
-                            Password:
-                          </span>
-                          <div className="flex items-center mt-1">
-                            <code className="bg-white px-3 py-2 rounded-l-md border border-gray-200 text-gray-800 flex-1">
-                              {classData.zoomPassword}
-                            </code>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="h-10 rounded-l-none"
-                              onClick={() => {
-                                navigator.clipboard.writeText(
-                                  classData.zoomPassword || ""
-                                );
-                                toast({
-                                  description: "Password copied to clipboard",
-                                });
-                              }}
-                            >
-                              <Copy className="h-4 w-4 mr-2" />
-                              Copy
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
                       <Button
-                        className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-md font-semibold flex items-center justify-center"
-                        onClick={() =>
-                          window.open(classData.zoomLink, "_blank")
-                        }
+                        className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-600 text-white py-6 px-8 rounded-xl font-semibold flex items-center gap-2 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                        onClick={() => handleJoinClass()}
+                        disabled={isJoining}
                       >
-                        <Video className="mr-2 h-5 w-5" />
-                        Join Zoom Meeting Now
+                        {isJoining ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <Video className="h-5 w-5" />
+                        )}
+                        {isJoining ? "Joining..." : "Join Live Class"}
                       </Button>
                     </div>
                   </div>

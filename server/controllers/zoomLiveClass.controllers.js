@@ -103,6 +103,7 @@ export const createZoomLiveClass = asyncHandler(async (req, res) => {
     getPrice,
     registrationFee,
     courseFee,
+    courseFeeEnabled,
     capacity,
     recurringClass,
     thumbnailUrl,
@@ -151,6 +152,10 @@ export const createZoomLiveClass = asyncHandler(async (req, res) => {
 
     if (courseFee !== undefined) {
       zoomLiveClassData.courseFee = parseFloat(courseFee || 0);
+    }
+
+    if (courseFeeEnabled !== undefined) {
+      zoomLiveClassData.courseFeeEnabled = courseFeeEnabled;
     }
 
     if (hasModules !== undefined) {
@@ -308,6 +313,7 @@ export const updateZoomLiveClass = asyncHandler(async (req, res) => {
     getPrice,
     registrationFee,
     courseFee,
+    courseFeeEnabled,
     capacity,
     recurringClass,
     thumbnailUrl,
@@ -345,6 +351,8 @@ export const updateZoomLiveClass = asyncHandler(async (req, res) => {
   if (registrationFee !== undefined)
     updatedFields.registrationFee = parseFloat(registrationFee);
   if (courseFee !== undefined) updatedFields.courseFee = parseFloat(courseFee);
+  if (courseFeeEnabled !== undefined)
+    updatedFields.courseFeeEnabled = courseFeeEnabled;
   if (capacity !== undefined && capacity !== null)
     updatedFields.capacity = parseInt(capacity);
   if (recurringClass !== undefined)
@@ -707,5 +715,202 @@ export const getZoomLiveClass = asyncHandler(async (req, res) => {
         transformedClass,
         "Zoom live class fetched successfully"
       )
+    );
+});
+
+// Admin: Toggle course fee enabled status
+export const toggleCourseFeeEnabled = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { courseFeeEnabled } = req.body;
+
+  const zoomLiveClass = await prisma.zoomLiveClass.findUnique({
+    where: { id },
+  });
+
+  if (!zoomLiveClass) {
+    throw new ApiError(404, "Zoom live class not found");
+  }
+
+  const updatedClass = await prisma.zoomLiveClass.update({
+    where: { id },
+    data: {
+      courseFeeEnabled: courseFeeEnabled,
+    },
+  });
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponsive(
+        200,
+        updatedClass,
+        `Course fee requirement ${
+          courseFeeEnabled ? "enabled" : "disabled"
+        } successfully`
+      )
+    );
+});
+
+// Admin: Get registrations for a class
+export const getClassRegistrations = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const registrations = await prisma.zoomSubscription.findMany({
+    where: {
+      zoomLiveClassId: id,
+      isRegistered: true,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponsive(
+        200,
+        registrations,
+        "Class registrations fetched successfully"
+      )
+    );
+});
+
+// Admin: Bulk approve registrations
+export const bulkApproveRegistrations = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { userIds } = req.body;
+
+  const zoomLiveClass = await prisma.zoomLiveClass.findUnique({
+    where: { id },
+  });
+
+  if (!zoomLiveClass) {
+    throw new ApiError(404, "Zoom live class not found");
+  }
+
+  // Update all specified subscriptions
+  const updatedSubscriptions = await prisma.$transaction(
+    userIds.map((userId) =>
+      prisma.zoomSubscription.update({
+        where: {
+          userId_zoomLiveClassId: {
+            userId,
+            zoomLiveClassId: id,
+          },
+        },
+        data: {
+          isApproved: true,
+          status: "ACTIVE",
+          hasAccessToLinks: !zoomLiveClass.courseFeeEnabled, // Give access if course fee is not required
+        },
+      })
+    )
+  );
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponsive(
+        200,
+        updatedSubscriptions,
+        "Registrations approved successfully"
+      )
+    );
+});
+
+// Admin: Remove access for users
+export const removeUserAccess = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { userIds } = req.body;
+
+  const zoomLiveClass = await prisma.zoomLiveClass.findUnique({
+    where: { id },
+  });
+
+  if (!zoomLiveClass) {
+    throw new ApiError(404, "Zoom live class not found");
+  }
+
+  // Update all specified subscriptions
+  const updatedSubscriptions = await prisma.$transaction(
+    userIds.map((userId) =>
+      prisma.zoomSubscription.update({
+        where: {
+          userId_zoomLiveClassId: {
+            userId,
+            zoomLiveClassId: id,
+          },
+        },
+        data: {
+          hasAccessToLinks: false,
+          status: "CANCELLED",
+        },
+      })
+    )
+  );
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponsive(
+        200,
+        updatedSubscriptions,
+        "Access removed successfully"
+      )
+    );
+});
+
+// Add getClassAttendees controller
+export const getClassAttendees = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const zoomLiveClass = await prisma.zoomLiveClass.findUnique({
+    where: { id },
+    include: {
+      subscriptions: {
+        where: {
+          hasAccessToLinks: true, // Only get users who have access
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!zoomLiveClass) {
+    throw new ApiError(404, "Zoom live class not found");
+  }
+
+  // Transform the data for better frontend consumption
+  const attendees = zoomLiveClass.subscriptions.map((sub) => ({
+    id: sub.id,
+    userId: sub.user.id,
+    name: sub.user.name,
+    email: sub.user.email,
+    joinedAt: sub.createdAt,
+    status: sub.status,
+  }));
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponsive(200, attendees, "Class attendees fetched successfully")
     );
 });

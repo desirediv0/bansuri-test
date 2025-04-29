@@ -497,6 +497,7 @@ model ZoomLiveClass {
   getPrice           Boolean @default(false)
   registrationFee    Float   @default(0)
   courseFee          Float   @default(0)
+  courseFeeEnabled   Boolean @default(false)
   capacity           Int?
   recurringClass     Boolean @default(false)
   thumbnailUrl       String

@@ -46,6 +46,7 @@ import {
   Loader2,
   CreditCard,
   Video,
+  CheckCircle2,
 } from "lucide-react";
 
 // Types
@@ -66,6 +67,7 @@ interface ZoomSession {
   courseFee: number;
   currentRange?: string;
   currentOrientation?: string;
+  courseFeeEnabled: boolean;
 }
 
 interface Subscription {
@@ -100,6 +102,7 @@ const MyLiveClasses = () => {
     string | null
   >(null);
   const [razorpayLoaded, setRazorpayLoaded] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -191,36 +194,31 @@ const MyLiveClasses = () => {
     }
   };
 
-  const handleJoinClass = async (zoomSessionId: string, moduleId?: string) => {
+  const handleJoinClass = async (id?: string, moduleId?: string) => {
     try {
-      setLoading(true);
+      setIsJoining(true);
       let queryParams = moduleId ? `?moduleId=${moduleId}` : "";
 
-      // Note: The server expects zoomLiveClassId as the parameter, but we're using zoomSessionId from client
-      // This is fine because the IDs are the same, just with different names in client vs server models
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/check-subscription/${zoomSessionId}${queryParams}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/zoom-live-class/check-subscription/${id}${queryParams}`,
         { withCredentials: true }
       );
 
-      if (response.data.data.isSubscribed) {
+      if (
+        response.data.data.hasAccessToLinks &&
+        response.data.data.meetingDetails?.link
+      ) {
         window.open(response.data.data.meetingDetails.link, "_blank");
-      } else if (response.data.data.isPending) {
-        toast.error(
-          "Your subscription is still pending approval from the administrator."
-        );
-      } else if (!response.data.data.isApproved) {
-        toast.error(
-          "Your subscription has not been approved yet. Please wait for admin approval."
-        );
       } else {
-        toast.error("Access Denied. Your subscription may have expired.");
+        toast.error(
+          "Unable to join class. Please check your registration status."
+        );
       }
     } catch (error) {
       console.error("Error joining class:", error);
       toast.error("Failed to join the class. Please try again.");
     } finally {
-      setLoading(false);
+      setIsJoining(false);
     }
   };
 
@@ -333,19 +331,54 @@ const MyLiveClasses = () => {
     return new Date(startTime) > new Date();
   };
 
-  const getStatusBadgeColor = (
-    status: string,
-    isApproved: boolean,
-    isRegistered: boolean,
-    hasAccessToLinks: boolean
-  ) => {
-    if (status === "ACTIVE" && isApproved && hasAccessToLinks)
-      return "bg-green-100 text-green-800";
-    if (status === "ACTIVE" && isApproved) return "bg-blue-100 text-blue-800";
-    if (status === "PENDING_APPROVAL") return "bg-yellow-100 text-yellow-800";
-    if (status === "REJECTED") return "bg-red-100 text-red-800";
-    if (status === "CANCELLED") return "bg-gray-100 text-gray-800";
-    return "bg-red-100 text-red-800";
+  const getStatusBadge = (subscription: any) => {
+    if (subscription.hasAccessToLinks) {
+      return {
+        text: "Full Access",
+        className: "bg-green-500 text-white",
+      };
+    }
+
+    if (subscription.status === "CANCELLED") {
+      return {
+        text: "Cancelled",
+        className: "bg-gray-100 text-gray-800",
+      };
+    }
+
+    if (subscription.status === "REJECTED") {
+      return {
+        text: "Rejected",
+        className: "bg-red-100 text-red-800",
+      };
+    }
+
+    // If registered and course fee is not enabled, show ready to join
+    if (
+      subscription.isRegistered &&
+      !subscription.zoomSession.courseFeeEnabled
+    ) {
+      return {
+        text: "Ready to Join",
+        className: "bg-green-100 text-green-800",
+      };
+    }
+
+    // If registered and course fee is enabled, show course fee required
+    if (
+      subscription.isRegistered &&
+      subscription.zoomSession.courseFeeEnabled
+    ) {
+      return {
+        text: "Course Fee Required",
+        className: "bg-blue-100 text-blue-800",
+      };
+    }
+
+    return {
+      text: "Registration Pending",
+      className: "bg-yellow-100 text-yellow-800",
+    };
   };
 
   const getStatusText = (
@@ -391,16 +424,16 @@ const MyLiveClasses = () => {
 
   return (
     <section>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-          <VideoIcon className="h-5 w-5 text-red-600" />
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <VideoIcon className="h-6 w-6 text-[#af1d33]" />
           My Live Classes
         </h2>
         <Button
           variant="outline"
           onClick={handleRefresh}
           disabled={refreshing}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 hover:bg-gray-100 transition-colors"
         >
           <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
           Refresh
@@ -408,22 +441,31 @@ const MyLiveClasses = () => {
       </div>
 
       {subscriptions.length === 0 ? (
-        <Card className="col-span-full p-8 text-center border-dashed border-2 border-red-200">
-          <p className="text-gray-600">
-            You haven't subscribed to any live classes yet.
-          </p>
-          <Button
-            className="mt-4 bg-red-600 hover:bg-red-700"
-            onClick={() => router.push("/live-classes")}
-          >
-            Browse Live Classes
-          </Button>
+        <Card className="col-span-full p-8 text-center border-dashed border-2 border-red-200 bg-red-50/50">
+          <div className="max-w-md mx-auto">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              No Live Classes Yet
+            </h3>
+            <p className="text-gray-600 mb-6">
+              You haven't subscribed to any live classes. Join a class to start
+              learning from our expert instructors.
+            </p>
+            <Button
+              className="bg-gradient-to-r from-[#af1d33] to-[#8f1729] hover:from-[#8f1729] hover:to-[#af1d33] text-white shadow-lg hover:shadow-xl transition-all duration-300"
+              onClick={() => router.push("/live-classes")}
+            >
+              Browse Live Classes
+            </Button>
+          </div>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {subscriptions.map((subscription) => (
-            <Card key={subscription.id} className="overflow-hidden">
-              <div className="relative h-40 w-full">
+            <Card
+              key={subscription.id}
+              className="overflow-hidden hover:shadow-lg transition-shadow duration-300"
+            >
+              <div className="relative h-48 w-full">
                 <Image
                   src={
                     subscription.zoomSession.thumbnailUrl || defaultThumbnail
@@ -431,118 +473,130 @@ const MyLiveClasses = () => {
                   alt={subscription.zoomSession.title}
                   fill
                   style={{ objectFit: "cover" }}
+                  className="transition-transform duration-300 hover:scale-105"
                 />
-                <div
-                  className={`absolute top-0 right-0 ${getStatusBadgeColor(
-                    subscription.status,
-                    subscription.isApproved,
-                    subscription.isRegistered,
-                    subscription.hasAccessToLinks
-                  )}`}
-                >
-                  {getStatusText(
-                    subscription.status,
-                    subscription.isApproved,
-                    subscription.isRegistered,
-                    subscription.hasAccessToLinks
-                  )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+                <div className="absolute top-4 right-4">
+                  {(() => {
+                    const status = getStatusBadge(subscription);
+                    return (
+                      <Badge
+                        className={`px-3 py-1.5 text-sm font-medium shadow-sm ${status.className}`}
+                      >
+                        {status.text}
+                      </Badge>
+                    );
+                  })()}
                 </div>
               </div>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg line-clamp-2">
                   {subscription.zoomSession.title}
                   {subscription.zoomSession.moduleName && (
-                    <span className="text-sm text-gray-600 block">
+                    <span className="text-sm text-gray-600 block mt-1">
                       Module: {subscription.zoomSession.moduleName}
                     </span>
                   )}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 pb-2">
-                <div className="flex items-center text-sm">
-                  <User className="mr-2 h-4 w-4" />
+              <CardContent className="space-y-3">
+                <div className="flex items-center text-sm text-gray-600">
+                  <User className="mr-2 h-4 w-4 text-[#af1d33]" />
                   <span>{subscription.zoomSession.teacherName}</span>
                 </div>
-                <div className="flex items-center text-sm">
-                  <Calendar className="mr-2 h-4 w-4" />
+                <div className="flex items-center text-sm text-gray-600">
+                  <Calendar className="mr-2 h-4 w-4 text-[#af1d33]" />
                   <span>{subscription.zoomSession.formattedDate}</span>
                 </div>
-                <div className="flex items-center text-sm">
-                  <Clock className="mr-2 h-4 w-4" />
+                <div className="flex items-center text-sm text-gray-600">
+                  <Clock className="mr-2 h-4 w-4 text-[#af1d33]" />
                   <span>{subscription.zoomSession.formattedTime}</span>
                 </div>
-                {subscription.status === "PENDING_APPROVAL" && (
-                  <div className="text-sm text-yellow-600 font-semibold flex items-center">
-                    <span className="animate-pulse">● </span>
-                    <span className="ml-1">Waiting for admin approval</span>
-                  </div>
-                )}
+                {subscription.isRegistered &&
+                  !subscription.hasAccessToLinks && (
+                    <div className="text-sm font-medium flex items-center bg-gray-50 p-2 rounded-lg">
+                      {subscription.zoomSession.courseFeeEnabled ? (
+                        <>
+                          <CreditCard className="h-4 w-4 text-blue-600 mr-2" />
+                          <span className="text-blue-800">
+                            Please pay the course fee to access class links
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 text-green-600 mr-2" />
+                          <span className="text-green-800">
+                            You can now join the live class
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
                 {subscription.zoomSession.currentRange && (
-                  <div className="flex items-center text-sm">
-                    <span className="font-medium">Range:</span>
-                    <span className="ml-1">
+                  <div className="flex items-center text-sm bg-gray-50 p-2 rounded-lg">
+                    <span className="font-medium text-gray-700">Range:</span>
+                    <span className="ml-2 text-gray-600">
                       {subscription.zoomSession.currentRange}
                     </span>
                   </div>
                 )}
                 {subscription.zoomSession.currentOrientation && (
-                  <div className="flex items-center text-sm">
-                    <span className="font-medium">Orientation:</span>
-                    <span className="ml-1">
+                  <div className="flex items-center text-sm bg-gray-50 p-2 rounded-lg">
+                    <span className="font-medium text-gray-700">
+                      Orientation:
+                    </span>
+                    <span className="ml-2 text-gray-600">
                       {subscription.zoomSession.currentOrientation}
                     </span>
                   </div>
                 )}
               </CardContent>
-              <CardFooter className="flex gap-2">
-                {!subscription.hasAccessToLinks && (
-                  <Button
-                    variant="default"
-                    size="sm"
-                    disabled={
-                      coursePaymentInProgress === subscription.id ||
-                      subscription.status !== "ACTIVE" ||
-                      !subscription.isApproved
-                    }
-                    onClick={() => handlePayCourseAccess(subscription)}
-                    className="w-full sm:w-auto"
-                    title={
-                      !subscription.isApproved
-                        ? "Waiting for admin approval"
-                        : "Pay course fee to access class links"
-                    }
-                  >
-                    {coursePaymentInProgress === subscription.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <CreditCard className="h-4 w-4 mr-1" />
-                    )}
-                    {subscription.isApproved
-                      ? "Pay Course Fee"
-                      : "Waiting for Approval"}
-                  </Button>
-                )}
-
-                {subscription.hasAccessToLinks && (
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={() =>
-                      handleJoinClass(
-                        subscription.zoomSession.id,
-                        subscription.moduleId
-                      )
-                    }
-                    className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
-                  >
-                    <Video className="h-4 w-4 mr-1" />
-                    Join Class
-                  </Button>
-                )}
+              <CardFooter className="flex gap-2 pt-2 pb-4">
+                {subscription.isRegistered ? (
+                  subscription.hasAccessToLinks ||
+                  !subscription.zoomSession.courseFeeEnabled ? (
+                    // Show Join button if has access or course fee is not required
+                    <Button
+                      variant="default"
+                      onClick={() =>
+                        handleJoinClass(
+                          subscription.zoomSession.id,
+                          subscription.moduleId
+                        )
+                      }
+                      disabled={isJoining}
+                      className="w-full py-5 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-600 text-white shadow-lg hover:shadow-xl transition-all duration-300"
+                    >
+                      {isJoining ? (
+                        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                      ) : (
+                        <Video className="h-5 w-5 mr-2" />
+                      )}
+                      {isJoining ? "Joining..." : "Join Live Class"}
+                    </Button>
+                  ) : (
+                    // Show Pay Course Fee button if course fee is required
+                    <Button
+                      variant="default"
+                      disabled={coursePaymentInProgress === subscription.id}
+                      onClick={() => handlePayCourseAccess(subscription)}
+                      className="w-full py-5 bg-gradient-to-r from-[#af1d33] to-[#8f1729] hover:from-[#8f1729] hover:to-[#af1d33] text-white shadow-lg hover:shadow-xl transition-all duration-300"
+                    >
+                      {coursePaymentInProgress === subscription.id ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <>
+                          <CreditCard className="h-5 w-5 mr-2" />
+                          Pay Course Fee
+                        </>
+                      )}
+                    </Button>
+                  )
+                ) : null}
 
                 <Button
                   variant="outline"
-                  className="flex items-center"
+                  className="flex items-center hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
                   onClick={() => handleCancelIntent(subscription)}
                 >
                   Cancel
@@ -554,18 +608,25 @@ const MyLiveClasses = () => {
       )}
 
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="bg-white rounded-xl p-6">
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancel Subscription</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-xl font-bold text-gray-900">
+              Cancel Subscription
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-600 mt-2">
               Are you sure you want to cancel your subscription to this class?
               You will no longer have access to join it.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleCancelConfirm}>
-              Confirm
+          <AlertDialogFooter className="mt-6">
+            <AlertDialogCancel className="hover:bg-gray-100 transition-colors">
+              Keep Subscription
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancelConfirm}
+              className="bg-red-600 hover:bg-red-700 text-white transition-colors"
+            >
+              Yes, Cancel
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -955,16 +955,26 @@ export const checkSubscription = asyncHandler(async (req, res) => {
       isApproved: false,
       hasAccessToLinks: false,
       meetingDetails: null,
+      courseFeeEnabled: zoomLiveClassBySlug.courseFeeEnabled,
     };
 
     if (subscription) {
-      responseData.isSubscribed = subscription.status === "ACTIVE";
+      // User is registered if they have a subscription and have paid registration fee
       responseData.isRegistered = subscription.isRegistered || false;
+      responseData.isSubscribed = subscription.status === "ACTIVE";
       responseData.isApproved = subscription.isApproved || false;
-      responseData.hasAccessToLinks = subscription.hasAccessToLinks || false;
 
-      // If user has paid course fee, include Zoom details
-      if (subscription.hasAccessToLinks) {
+      // Determine access to links based on courseFeeEnabled flag
+      if (!zoomLiveClassBySlug.courseFeeEnabled) {
+        // If course fee is not enabled, grant access after registration
+        responseData.hasAccessToLinks = subscription.isRegistered;
+      } else {
+        // If course fee is enabled, check if user has paid course fee
+        responseData.hasAccessToLinks = subscription.hasAccessToLinks || false;
+      }
+
+      // If user has access, include Zoom details
+      if (responseData.hasAccessToLinks) {
         responseData.meetingDetails = {
           link: zoomLiveClassBySlug.zoomLink,
           meetingId: zoomLiveClassBySlug.zoomMeetingId,
@@ -1000,16 +1010,26 @@ export const checkSubscription = asyncHandler(async (req, res) => {
     isApproved: false,
     hasAccessToLinks: false,
     meetingDetails: null,
+    courseFeeEnabled: zoomLiveClass.courseFeeEnabled,
   };
 
   if (subscription) {
-    responseData.isSubscribed = subscription.status === "ACTIVE";
+    // User is registered if they have a subscription and have paid registration fee
     responseData.isRegistered = subscription.isRegistered || false;
+    responseData.isSubscribed = subscription.status === "ACTIVE";
     responseData.isApproved = subscription.isApproved || false;
-    responseData.hasAccessToLinks = subscription.hasAccessToLinks || false;
 
-    // If user has paid course fee, include Zoom details
-    if (subscription.hasAccessToLinks) {
+    // Determine access to links based on courseFeeEnabled flag
+    if (!zoomLiveClass.courseFeeEnabled) {
+      // If course fee is not enabled, grant access after registration
+      responseData.hasAccessToLinks = subscription.isRegistered;
+    } else {
+      // If course fee is enabled, check if user has paid course fee
+      responseData.hasAccessToLinks = subscription.hasAccessToLinks || false;
+    }
+
+    // If user has access, include Zoom details
+    if (responseData.hasAccessToLinks) {
       responseData.meetingDetails = {
         link: zoomLiveClass.zoomLink,
         meetingId: zoomLiveClass.zoomMeetingId,
@@ -1083,6 +1103,9 @@ export const getPendingApprovals = asyncHandler(async (req, res) => {
       registrationPaymentId: {
         not: null,
       }, // Only include subscriptions that have a payment ID
+      zoomLiveClass: {
+        courseFeeEnabled: true, // Only get subscriptions for classes where course fee is enabled
+      },
     },
     orderBy: {
       createdAt: "desc",
@@ -1104,6 +1127,7 @@ export const getPendingApprovals = asyncHandler(async (req, res) => {
           registrationFee: true,
           courseFee: true,
           startTime: true,
+          courseFeeEnabled: true,
         },
       },
       payments: {
@@ -1126,6 +1150,7 @@ export const getPendingApprovals = asyncHandler(async (req, res) => {
       registrationFee: sub.zoomLiveClass?.registrationFee,
       courseFee: sub.zoomLiveClass?.courseFee,
       startTime: sub.zoomLiveClass?.startTime,
+      courseFeeEnabled: sub.zoomLiveClass?.courseFeeEnabled,
     },
     zoomLiveClass: undefined,
   }));
